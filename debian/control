@@ -1,0 +1,50 @@
+Source: phantom
+Section: net
+Priority: optional
+Maintainer: Eugene Mamchits <mamchits@yandex-team.ru>
+Standards-Version: 3.7.2
+Build-Depends: debhelper (>= 7), libc6-dev, g++, perl,
+	libssl-dev (>= 0.9.8m-1),
+	binutils-dev
+
+Package: phantom
+Architecture: i386 amd64
+Section: net
+Priority: optional
+Depends: ${shlibs:Depends}
+Description: I/O engine with some modules.
+
+Package: phantom-dev
+Architecture: i386 amd64
+Section: devel
+Priority: optional
+Depends: libc6-dev, g++, phantom (= ${source:Version})
+Description: Phantom development library.
+
+Package: phantom-ssl
+Architecture: i386 amd64
+Section: net
+Priority: optional
+Depends: ${shlibs:Depends}, phantom (= ${source:Version})
+Description: OpenSSL dependent modules for phantom.
+
+Package: phantom-ssl-dev
+Architecture: i386 amd64
+Section: devel
+Priority: optional
+Depends: phantom-dev (= ${source:Version}), phantom-ssl (= ${source:Version})
+Description: Phantom development library (ssl part).
+
+Package: phantom-debug
+Architecture: i386 amd64
+Section: net
+Priority: optional
+Depends: ${shlibs:Depends}, phantom (= ${source:Version})
+Description: libbfd dependent modules for phantom.
+
+Package: phantom-debug-dev
+Architecture: i386 amd64
+Section: devel
+Priority: optional
+Depends: phantom-dev (= ${source:Version}), phantom-debug (= ${source:Version})
+Description: Phantom development library (debug part).

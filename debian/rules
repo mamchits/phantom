@@ -1,0 +1,6 @@
+#! /bin/sh
+
+export DEB_BUILD_OPTIONS=nostrip
+export MAKEFLAGS=Rj12
+
+exec dh "${@}"
