@@ -19,13 +19,13 @@ namespace phantom { namespace io_client {
 
 class link_t : public list_item_t<link_t> {
 	interval_t const conn_timeout;
+	log::level_t remote_errors;
 	string_t name;
 	proto_instance_t *proto_instance;
 
 	virtual netaddr_t const &remote_netaddr() const throw() = 0;
 	virtual fd_ctl_t const *ctl() const throw() = 0;
 
-	int do_connect(interval_t *timeout);
 	void loop();
 	void do_run();
 	void do_stat(out_t &out, bool clear);
@@ -48,7 +48,7 @@ public:
 protected:
 	link_t(
 		link_t *&list, string_t const &_name,
-		interval_t _conn_timeout, proto_t &_proto
+		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 	);
 
 public:
@@ -71,7 +71,7 @@ public:
 
 	virtual void create(
 		link_t *&list, string_t const &client_name,
-		interval_t _conn_timeout, proto_t &_proto
+		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 	) const = 0;
 
 protected:

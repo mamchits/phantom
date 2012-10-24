@@ -28,10 +28,10 @@ class link_ipv4_t : public link_t {
 public:
 	inline link_ipv4_t(
 		link_t *&list, string_t const &name,
-		interval_t _conn_timeout, proto_t &_proto,
+		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto,
 		netaddr_ipv4_t const &_netaddr, bool cork
 	) :
-		link_t(list, name, _conn_timeout, _proto),
+		link_t(list, name, _conn_timeout, _remote_errors, _proto),
 		netaddr(_netaddr), ctl_tcp(cork) { }
 };
 
@@ -48,7 +48,7 @@ class links_ipv4_t : public links_t {
 
 	virtual void create(
 		link_t *&list, string_t const &client_name,
-		interval_t _conn_timeout, proto_t &_proto
+		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 	) const;
 
 public:
@@ -89,7 +89,7 @@ public:
 
 void links_ipv4_t::create(
 	link_t *&list, string_t const &client_name,
-	interval_t _conn_timeout, proto_t &_proto
+	interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 ) const {
 	for(size_t i = 0; i < addrs_count; ++i) {
 		netaddr_ipv4_t const &addr = addrs[i];
@@ -100,7 +100,7 @@ void links_ipv4_t::create(
 				client_name.size() + 1 + name.size() + 1 + addr_len + 1 + 6 + 1
 			)(client_name)('(')(name)(',').print(addr)(',').print(j)(')');
 
-			new link_ipv4_t(list, link_name, _conn_timeout, _proto, addr, cork);
+			new link_ipv4_t(list, link_name, _conn_timeout, _remote_errors, _proto, addr, cork);
 		}
 	}
 }

@@ -6,6 +6,10 @@
 
 #pragma once
 
+#include <pd/base/time.H>
+
+#include <sys/poll.h>
+
 #pragma GCC visibility push(default)
 
 namespace pd {
@@ -19,6 +23,10 @@ enum bq_err_t {
 };
 
 bool bq_success(bq_err_t res) throw();
+
+bq_err_t bq_do_poll(
+	int fd, short int &events, interval_t *timeout, char const *where
+);
 
 } // namespace pd
 

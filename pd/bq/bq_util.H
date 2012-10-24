@@ -9,7 +9,6 @@
 #include <pd/base/time.H>
 
 #include <sys/socket.h>
-#include <sys/poll.h>
 
 #pragma GCC visibility push(default)
 
@@ -24,6 +23,9 @@ ssize_t bq_readv(int fd, struct iovec const *vec, int count, interval_t *timeout
 
 ssize_t bq_write(int fd, void const *buf, size_t len, interval_t *timeout);
 ssize_t bq_writev(int fd, struct iovec const *vec, int count, interval_t *timeout);
+
+ssize_t bq_recvfrom(int fd, void *buf, size_t len, struct sockaddr *addr, socklen_t *addrlen, interval_t *timeout);
+ssize_t bq_sendto(int fd, const void *buf, size_t len, const struct sockaddr *dest_addr, socklen_t addrlen, interval_t *timeout);
 
 ssize_t bq_sendfile(int fd, int from_fd, off_t &off, size_t size, interval_t *timeout);
 

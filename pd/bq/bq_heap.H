@@ -63,7 +63,7 @@ private:
 	void place(item_t *item, size_t ind, bool flag) throw();
 
 public:
-	void insert(item_t *item);
+	void insert(item_t *item) throw();
 	void remove(item_t *item) throw();
 
 	void validate();

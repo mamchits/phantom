@@ -41,7 +41,7 @@ bq_conn_ssl_t::bq_conn_ssl_t(
 	internal = ssl;
 }
 
-static inline int socket_err(int fd) {
+static inline int socket_err(int fd) throw() {
 	int err; socklen_t errlen = sizeof(err);
 	getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen);
 	errno = err;
@@ -326,7 +326,7 @@ void bq_conn_ssl_t::sendfile(
 }
 
 void bq_conn_ssl_t::wait_read(interval_t *timeout) {
-	if(bq_wait_read(fd, timeout) < 0)
+	if(!bq_wait_read(fd, timeout))
 		throw exception_sys_t(log_level, errno, "poll: %m");
 }
 

@@ -12,8 +12,12 @@ mod_slibs.$(1) = $(3:%=lib/libpd-%.s.a)
 mod_link.$(1) = -Wl,--whole-archive $$(mod_slibs.$(1)) -Wl,--no-whole-archive
 endif
 
+ifneq ($(4),)
+mod_ext_link.$(1) = $(4:%=-l%)
+endif
+
 $$(mod_target.$(1)): $$(mod_objs.$(1)) $$(mod_slibs.$(1))
-	$$(CXX) -shared $$(mod_objs.$(1)) $$(mod_link.$(1)) $(4) -o $$(@)
+	$$(CXX) -shared $$(mod_objs.$(1)) $$(mod_link.$(1)) $$(mod_ext_link.$(1)) -o $$(@)
 
 dirs_pd$(2) += phantom/$(1)
 modules$(2) += $$(mod_target.$(1))

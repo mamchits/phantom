@@ -36,13 +36,13 @@ DEPS = \
 CXXFLAGS = \
 	-g -O$(OPT) $(CXXSTD) \
 	-fvisibility=hidden -fvisibility-inlines-hidden -fno-default-inline \
-	-fno-omit-frame-pointer -fno-common \
+	-fno-omit-frame-pointer -fno-common -fsigned-char \
 	-Wall -W -Werror -Wsign-promo -Woverloaded-virtual \
 	-Wno-ctor-dtor-privacy -Wno-non-virtual-dtor $(CPPFLAGS) $(CXXFLAGS.$(<))
 
 CFLAGS = \
 	-g -O$(OPT) $(CSTD) \
-	-fvisibility=hidden -fno-omit-frame-pointer -fno-common \
+	-fvisibility=hidden -fno-omit-frame-pointer -fno-common -fsigned-char \
 	-Wall -W -Werror $(CPPFLAGS) $(CFLAGS.$(<))
 
 

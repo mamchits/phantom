@@ -77,7 +77,7 @@ void bq_conn_fd_t::sendfile(
 }
 
 void bq_conn_fd_t::wait_read(interval_t *timeout) {
-	if(bq_wait_read(in_fd, timeout) < 0)
+	if(!bq_wait_read(in_fd, timeout))
 		throw exception_sys_t(log_level, errno, "poll: %m");
 }
 

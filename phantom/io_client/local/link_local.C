@@ -26,10 +26,11 @@ class link_local_t : public link_t {
 public:
 	inline link_local_t(
 		link_t *&list, string_t const &name,
-		interval_t _conn_timeout, proto_t &_proto,
+		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto,
 		netaddr_local_t const &_netaddr
 	) :
-		link_t(list, name, _conn_timeout, _proto), netaddr(_netaddr) { }
+		link_t(list, name, _conn_timeout, _remote_errors, _proto),
+		netaddr(_netaddr) { }
 };
 
 fd_ctl_t const *link_local_t::ctl() const throw() { return NULL; }
@@ -44,7 +45,7 @@ class links_local_t : public links_t {
 
 	virtual void create(
 		link_t *&list, string_t const &client_name,
-		interval_t _conn_timeout, proto_t &_proto
+		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 	) const;
 
 public:
@@ -91,7 +92,7 @@ public:
 
 void links_local_t::create(
 	link_t *&list, string_t const &client_name,
-	interval_t _conn_timeout, proto_t &_proto
+	interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 ) const {
 	for(size_t i = 0; i < addrs_count; ++i) {
 		netaddr_local_t const &addr = addrs[i];
@@ -102,7 +103,7 @@ void links_local_t::create(
 				client_name.size() + 1 + name.size() + 1 + addr_len + 1 + 6 + 1
 			)(client_name)('(')(name)(',').print(addr)(',').print(j)(')');
 
-			new link_local_t(list, link_name, _conn_timeout, _proto, addr);
+			new link_local_t(list, link_name, _conn_timeout, _remote_errors, _proto, addr);
 		}
 	}
 }

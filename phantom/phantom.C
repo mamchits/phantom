@@ -237,8 +237,8 @@ void phantom_t::run(string_t const &conf_name) {
 		if(need_stat) {
 			interval_t period = config.stat.period;
 			if(period > interval_zero) {
-				unsigned int s = period / interval_second;
-				unsigned int ms = (period % interval_second) / interval_microsecond;
+				time_t s = period / interval_second;
+				suseconds_t ms = (period % interval_second) / interval_microsecond;
 				itimerval it = { { s, ms }, { s, ms } };
 				setitimer(ITIMER_REAL, &it, NULL);
 			}
@@ -479,6 +479,8 @@ extern "C" int main(int _argc, char *_argv[], char *_envp[]) {
 
 			(mode == run ? phantom_t::run : phantom_t::check)(name);
 		}
+
+		return 0;
 	}
 	catch(exception_t const &ex) {
 		ex.log();
@@ -487,7 +489,7 @@ extern "C" int main(int _argc, char *_argv[], char *_envp[]) {
 		log_error("unknown exception");
 	}
 
-	return 0;
+	return 1;
 }
 
 } // namespace phantom

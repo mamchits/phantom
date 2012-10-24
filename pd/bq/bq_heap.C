@@ -48,7 +48,7 @@ void bq_heap_t::place(item_t *item, size_t i, bool flag) throw() {
 	put(i, item);
 }
 
-void bq_heap_t::insert(item_t *item) {
+void bq_heap_t::insert(item_t *item) throw() {
 	assert(!item->ind);
 	assert(!item->heap);
 
@@ -57,8 +57,7 @@ void bq_heap_t::insert(item_t *item) {
 		if(maxcount < 128) maxcount = 128;
 
 		item_t **_items = (item_t **)realloc(items, (maxcount + 1) * sizeof(item_t *));
-		if(!_items)
-			throw exception_sys_t(log::error, ENOMEM, "realloc: %m");
+		assert(_items != NULL);
 
 		items = _items;
 

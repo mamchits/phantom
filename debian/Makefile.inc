@@ -9,8 +9,7 @@ debian/phantom.examples:
 	@ls -1 examples/*.conf >$(@)
 
 targets_debian += debian/phantom.examples
-
-targets += $(targets_debian)
+targets += debian/phantom.examples
 
 $(targets_debian): debian_force
 

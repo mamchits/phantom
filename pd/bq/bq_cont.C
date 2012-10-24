@@ -29,6 +29,12 @@ namespace pd {
 #define STACK_SIZE (8*1024*1024)
 #define MISC_REG_NUM (5)
 
+#elif defined(__arm__)
+
+#define PAGE_SIZE (4096)
+#define STACK_SIZE (2*1024*1024)
+#define MISC_REG_NUM (8)
+
 #else
 #error Not implemented yet
 #endif
@@ -63,14 +69,15 @@ unsigned int bq_spec_reserve() throw() {
 	return bq_spec_num++;
 }
 
-#if \
-	__gcc_version_current >= __gcc_version(3, 3, 0) &&  \
-	__gcc_version_current < __gcc_version(4, 7, 0) && \
-	!defined(__arm__)
+#if defined(__GXX_ABI_VERSION) && __GXX_ABI_VERSION == 1002
 
 struct __cxa_eh_globals {
 	void *caughtExceptions;
 	unsigned int uncaughtExceptions;
+
+#ifdef __ARM_EABI__
+	void *propagatingExceptions;
+#endif
 
 	inline __cxa_eh_globals() throw() :
 		caughtExceptions(NULL), uncaughtExceptions(0) { }
@@ -159,7 +166,7 @@ public:
 		spec_num(bq_spec_num) {
 
 		for(unsigned int i = 0; i < spec_num; ++i)
-			(*this)[i] = NULL;
+			((void **)this)[-2 - (int)i] = NULL; // (*this)[i] = NULL;
 
 		for(unsigned int i = 0; i < bq_cont_states; ++i)
 			stat[i] = interval_zero;

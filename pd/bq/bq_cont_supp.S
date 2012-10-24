@@ -6,6 +6,8 @@
 
 .file "bq_cont_supp.S"
 
+.section .note.GNU-stack,"",%progbits
+
 #if defined(__i386__)
 
 #define FUNCTION(fun) \
@@ -70,14 +72,74 @@ FUNCTION(_ZN2pd11bq_cont_runEPFvPvES0_S0_)
 	.cfi_endproc
 	movl %esp, %ebp
 	movl 12(%ebp), %eax
-	movl %eax, %esp
+	movl %eax, %esp     /* __sp = stack; */
 	movl 8(%ebp), %eax
-	pushl %eax
+	pushl %eax          /* push(arg); */
 	movl 4(%ebp), %eax
-	pushl %eax
+	pushl %eax          /* push(fun); */
 	xorl %ebp, %ebp
-	pushl %ebp
+	pushl %ebp          /* push(0); */
 	jmp _ZN2pd12bq_cont_procEPFvPvES0_ /* pd::bq_cont_proc(fun, arg); */
+	.cfi_startproc
+END(_ZN2pd11bq_cont_runEPFvPvES0_S0_)
+
+#elif defined(__arm__)
+
+#define FUNCTION(fun) \
+	.text; \
+	.align 2; \
+	.p2align 4,,15; \
+.globl fun; \
+fun: \
+	.cfi_startproc
+
+#define END(fun) \
+	.cfi_endproc; \
+	.size fun, .-fun
+
+/*
+unsigned long pd::state_t::save();
+ */
+
+FUNCTION(_ZN2pd7state_t4saveEv)
+	str sp, [r0], #4    /* stack_ptr = __sp; */
+	str r7, [r0], #4   /* frame_ptr = __fp; */
+	str lr, [r0], #4    /* pc = __lr; */
+	stmia r0!, {r4-r11} /* misc = {__r4 .. __r11}; */
+	mov r0, #0          /* return (0); */
+	mov pc, lr
+END(_ZN2pd7state_t4saveEv)
+
+/*
+void __noreturn pd::state_t::restore(int unsigned long x);
+ */
+
+FUNCTION(_ZN2pd7state_t7restoreEm)
+	ldr sp, [r0], #4    /* __sp = stack_ptr; */
+	ldr r7, [r0], #4     /* __fp = frame_ptr; */
+	ldr r2, [r0], #4      /* __lr = pc; */
+	ldmia r0!, {r4-r11} /* {__r4 .. __r11} = misc; */
+	mov r0, r1          /* return (x); */
+	mov pc, r2
+END(_ZN2pd7state_t7restoreEm)
+
+/*
+extern void __hidden __noreturn pd::bq_cont_proc(void (*fun)(void *), void *arg);
+ */
+
+.hidden _ZN2pd12bq_cont_procEPFvPvES0_
+
+/*
+void __hidden __noreturn pd::bq_cont_run(void (*fun)(void *), void *arg, void *stack);
+ */
+
+FUNCTION(_ZN2pd11bq_cont_runEPFvPvES0_S0_)
+	.cfi_endproc
+	mov sp, r2          /* __sp = stack; */
+	ldr r3, =_ZN2pd12bq_cont_procEPFvPvES0_
+	mov lr, #0
+	mov r7, #0
+	mov pc, r3          /* pd::bq_cont_proc(fun, arg); */
 	.cfi_startproc
 END(_ZN2pd11bq_cont_runEPFvPvES0_S0_)
 

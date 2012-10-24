@@ -18,75 +18,59 @@ namespace phantom { namespace io_client {
 
 link_t::link_t(
 	link_t *&list, string_t const &_name,
-	interval_t _conn_timeout, proto_t &_proto
+	interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 ) :
 	list_item_t<link_t>(this, list),
-	conn_timeout(_conn_timeout), name(_name),
+	conn_timeout(_conn_timeout), remote_errors(_remote_errors), name(_name),
 	proto_instance(_proto.create_instance(name)) { }
 
 link_t::~link_t() throw() { delete proto_instance; }
-
-int link_t::do_connect(interval_t *timeout) {
-	try {
-		netaddr_t const &netaddr = remote_netaddr();
-
-		int fd = socket(netaddr.sa->sa_family, SOCK_STREAM, 0);
-		if(fd < 0)
-			throw exception_sys_t(log::warning, errno, "socket: %m");
-
-		fd_guard_t fd_guard(fd);
-
-		bq_fd_setup(fd);
-
-		if(bq_connect(fd, netaddr.sa, netaddr.sa_len, timeout) < 0)
-			throw exception_sys_t(log::warning, errno, "connect: %m");
-
-		log_debug("connected");
-		fd_guard.relax();
-
-		return fd;
-	}
-	catch(exception_sys_t const &ex) {
-		if(ex.errno_val == ECANCELED)
-			throw;
-
-		ex.log();
-
-		return -1;
-	}
-}
 
 void link_t::loop() {
 	timeval_t last_conn = timeval_long_ago;
 
 	while(true) {
-		timeval_t now = timeval_current();
-		interval_t to_sleep = conn_timeout - (timeval_current() - last_conn);
-
-		if(to_sleep > interval_zero && bq_sleep(&to_sleep) < 0)
-			throw exception_sys_t(log::error, errno, "bq_sleep: %m");
-
-		last_conn = timeval_current();
-
-		interval_t timeout = conn_timeout;
-
-		int fd = do_connect(&timeout);
-		if(fd < 0)
-			continue;
-
-		fd_guard_t fd_guard(fd);
-
-		bq_conn_fd_t conn(fd, ctl(), log::error, /* dup = */ true);
-
 		try {
+			{
+				timeval_t now = timeval_current();
+				interval_t to_sleep = conn_timeout - (timeval_current() - last_conn);
+
+				if(to_sleep > interval_zero && bq_sleep(&to_sleep) < 0)
+					throw exception_sys_t(log::error, errno, "bq_sleep: %m");
+
+			}
+
+			last_conn = timeval_current();
+
+			netaddr_t const &netaddr = remote_netaddr();
+
+			int fd = socket(netaddr.sa->sa_family, SOCK_STREAM, 0);
+			if(fd < 0)
+				throw exception_sys_t(remote_errors, errno, "socket: %m");
+
+			fd_guard_t fd_guard(fd);
+
+			bq_fd_setup(fd);
+
+			interval_t timeout = conn_timeout;
+
+			if(bq_connect(fd, netaddr.sa, netaddr.sa_len, &timeout) < 0)
+				throw exception_sys_t(remote_errors, errno, "connect: %m");
+
+			log_debug("connected");
+
+			bq_conn_fd_t conn(fd, ctl(), remote_errors, /* dup = */ true);
+
 			proto_instance->proc(conn);
 		}
 		catch(exception_sys_t const &ex) {
 			if(ex.errno_val == ECANCELED)
 				throw;
 
-			str_t msg = ex.msg();
-			log_warning("%.*s", (int)msg.size(), msg.ptr());
+			ex.log();
+		}
+		catch(exception_t const &ex) {
+			ex.log();
 		}
 	}
 }

@@ -1,5 +1,5 @@
-phantom (0.14.0~pre40) hardy; urgency=low
+phantom (0.14.0~pre44+exp) hardy; urgency=low
 
-  * svn log https://svn.yandex.ru/phantom/trunk@207
+  * svn log https://svn.yandex.ru/phantom/trunk@212
 
- -- Eugene Mamchits <mamchits@yandex-team.ru>  Thu, 28 Jun 2012 19:53:23 +0400
+ -- Eugene Mamchits <mamchits@yandex-team.ru>  Wed, 24 Oct 2012 19:03:15 +0400

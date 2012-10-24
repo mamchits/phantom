@@ -267,9 +267,12 @@ static bool agent_gzip_capable(handler_t::request_t const &request) {
 	val = request.header.lookup(CSTR("user-agent"));
 	if(val) {
 		in_t::ptr_t p = *val;
-		while(*p && is_space(*p)) ++p;
+		while(p && is_space(*p)) ++p;
 
-		if(p.match<ident_t>(decayed_agent_prefix) && *(p++) < '7' && *(p++) == '.')
+		if(
+			p.match<ident_t>(decayed_agent_prefix) &&
+			(!p || *(p++) < '7') && (!p || *(p++) == '.')
+		)
 			return false;
 	}
 

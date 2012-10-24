@@ -87,6 +87,34 @@ ssize_t bq_writev(int fd, struct iovec const *vec, int count, interval_t *timeou
 	}
 }
 
+ssize_t bq_recvfrom(int fd, void *buf, size_t len, struct sockaddr *addr, socklen_t *addrlen, interval_t *timeout) {
+	while(true) {
+		ssize_t res = recvfrom(fd, buf, len, 0, addr, addrlen);
+
+		if(res < 0 && errno == EAGAIN) {
+			short int events = POLLIN;
+			if(bq_success(bq_do_poll(fd, events, timeout, "recvfrom")))
+				continue;
+		}
+
+		return res;
+	}
+}
+
+ssize_t bq_sendto(int fd, const void *buf, size_t len, const struct sockaddr *addr, socklen_t addrlen, interval_t *timeout) {
+	while(true) {
+		ssize_t res = sendto(fd, buf, len, 0, addr, addrlen);
+
+		if(res < 0 && errno == EAGAIN) {
+			short int events = POLLOUT;
+			if(bq_success(bq_do_poll(fd, events, timeout, "sendto")))
+				continue;
+		}
+
+		return res;
+	}
+}
+
 int bq_connect(int fd, struct sockaddr const *addr, socklen_t addrlen, interval_t *timeout) {
 	int res = connect(fd, addr, addrlen);
 

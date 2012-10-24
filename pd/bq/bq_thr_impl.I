@@ -112,8 +112,4 @@ private:
 	friend class bq_thr_t;
 };
 
-bq_err_t bq_do_poll(
-	int fd, short int &events, interval_t *timeout, char const *where
-);
-
 } // namespace pd

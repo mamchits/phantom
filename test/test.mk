@@ -10,11 +10,15 @@ test_objs.$(1) = $$(test_srcs.$(1):%.C=%.o)
 tests.$(1) = $$(test_srcs.$(1):%.C=%)
 
 ifneq ($(2),)
-test_libs.$(1) = $(2:%=lib/libpd-%.a)
+test_link.$(1) = $(2:%=lib/libpd-%.a)
 endif
 
-$$(tests.$(1)): % : %.o
-	$$(CXX) $(LFLAGS.$(@)) $$(<) lib/libpd-$(1).a $$(test_libs.$(1)) -ldl -lpthread -o $$(@)
+ifneq ($(3),)
+test_ext_link.$(1) = $(3:%=-l%)
+endif
+
+$$(tests.$(1)): % : %.o lib/libpd-$(1).a $$(test_link.$(1))
+	$$(CXX) $(LFLAGS.$(@)) $$(<) lib/libpd-$(1).a $$(test_link.$(1)) $$(test_ext_link.$(1)) -ldl -lpthread -o $$(@)
 
 tmps_test += $$(test_objs.$(1))
 targets_test += $$(tests.$(1))

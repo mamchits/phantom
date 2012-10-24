@@ -182,12 +182,13 @@ bool method_stream_t::test(stat_t &stat) const {
 
 		stat_t::tcount_guard_t tcount_guard(stat);
 
+		_retry:
+
 		result_t res;
 		bool event = false;
 		interval_t cur_timeout = timeout;
 
 		try {
-			_retry:
 			res.proto_code = 0;
 
 			if(!conn) {
@@ -279,6 +280,16 @@ bool method_stream_t::test(stat_t &stat) const {
 				res.log_level = logger_t::transport_error;
 			else
 				res.log_level = logger_t::network_error;
+
+			str_t msg = ex.msg();
+			log_warning("Connection closed: %.*s", (int)msg.size(), msg.ptr());
+		}
+		catch(exception_t const &ex) {
+			delete conn;
+			conn = NULL;
+
+			res.err = EPROTO;
+			res.log_level = logger_t::transport_error;
 
 			str_t msg = ex.msg();
 			log_warning("Connection closed: %.*s", (int)msg.size(), msg.ptr());

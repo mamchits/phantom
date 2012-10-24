@@ -6,11 +6,10 @@
 
 #pragma once
 
-#include <pd/base/thr.H>
-#include <pd/base/time.H>
-#include <pd/base/assert.H>
-
 #include <pd/bq/bq.H>
+
+#include <pd/base/thr.H>
+#include <pd/base/assert.H>
 
 #pragma GCC visibility push(default)
 
@@ -33,9 +32,9 @@ public:
 		assert(list == NULL);
 	}
 
-	bq_err_t lock(interval_t *timeout);
+	bq_err_t lock(interval_t *timeout) throw();
 	void lock();
-	void unlock();
+	void unlock() throw();
 
 	friend class wait_item_t;
 };

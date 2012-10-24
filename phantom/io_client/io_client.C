@@ -37,13 +37,14 @@ public:
 
 		sizeval_t ibuf_size, obuf_size;
 		interval_t conn_timeout;
+		config::enum_t<log::level_t> remote_errors;
 
 		config::list_t<config::objptr_t<links_t> > links;
 		config::objptr_t<proto_t> proto;
 
 		inline config_t() throw() :
 			io_t::config_t(),
-			conn_timeout(interval_second) { }
+			conn_timeout(interval_second), remote_errors(log::error) { }
 
 		inline void check(in_t::ptr_t const &ptr) const {
 			io_t::config_t::check(ptr);
@@ -64,6 +65,7 @@ config_binding_sname(io_client_t);
 config_binding_type(io_client_t, links_t);
 config_binding_type(io_client_t, proto_t);
 config_binding_value(io_client_t, conn_timeout);
+config_binding_value(io_client_t, remote_errors);
 config_binding_value(io_client_t, links);
 config_binding_value(io_client_t, proto);
 config_binding_parent(io_client_t, io_t, 1);
@@ -75,7 +77,7 @@ io_client_t::io_client_t(string_t const &name, config_t const &config) :
 
 	try {
 		for(typeof(config.links.ptr()) ptr = config.links; ptr; ++ptr)
-			ptr.val()->create(links, name, config.conn_timeout, proto);
+			ptr.val()->create(links, name, config.conn_timeout, config.remote_errors, proto);
 	}
 	catch(...) {
 		while(links) delete links;

@@ -11,6 +11,7 @@ namespace pd {
 
 class bq_cond_t::wait_item_t : public bq_thr_t::impl_t::item_t {
 	bq_cond_t &cond;
+	bool broadcast;
 	wait_item_t *next, **me;
 
 	virtual void attach() throw();
@@ -18,7 +19,7 @@ class bq_cond_t::wait_item_t : public bq_thr_t::impl_t::item_t {
 
 public:
 	inline wait_item_t(interval_t *timeout, bq_cond_t &_cond) :
-		item_t(timeout), cond(_cond) { }
+		item_t(timeout), cond(_cond), broadcast(false) { }
 
 	inline ~wait_item_t() throw() { }
 
@@ -39,13 +40,16 @@ void bq_cond_t::wait_item_t::detach() throw() {
 
 	if(cond.last == &next)
 		cond.last = me;
+
+	if(next && next->broadcast)
+		impl = next->set_ready();
 }
 
-void bq_cond_t::lock() {
+void bq_cond_t::lock() throw() {
 	spinlock.lock();
 }
 
-void bq_cond_t::unlock() {
+void bq_cond_t::unlock() throw() {
 	bq_thr_t::impl_t *_impl = impl;
 	impl = NULL;
 
@@ -54,15 +58,21 @@ void bq_cond_t::unlock() {
 	if(_impl) _impl->poke();
 }
 
-bq_err_t bq_cond_t::wait(interval_t *timeout) {
+bq_err_t bq_cond_t::wait(interval_t *timeout) throw() {
 	wait_item_t item(timeout, *this);
 
 	return item.suspend(false, "cond-wait");
 }
 
-void bq_cond_t::send() {
-	if(list)
+void bq_cond_t::send(bool broadcast) throw() {
+	if(list) {
 		impl = list->set_ready();
+
+		if(broadcast) {
+			for(wait_item_t *item = list->next; item; item = item->next)
+				item->broadcast = true;
+		}
+	}
 }
 
 } // namespace pd

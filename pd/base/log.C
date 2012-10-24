@@ -34,7 +34,7 @@ static backend_default_t __init_priority(101) const backend_deafult;
 
 aux_t::~aux_t() throw() { }
 
-static handler_default_t const handler_default(STRING("*"), &backend_deafult);
+static __init_priority(110) handler_default_t const handler_default(STRING("*"), &backend_deafult);
 
 static __thread handler_t const *handler_current = NULL;
 

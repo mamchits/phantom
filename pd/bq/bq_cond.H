@@ -8,10 +8,6 @@
 
 #include <pd/bq/bq_thr.H>
 
-#include <pd/base/thr.H>
-#include <pd/base/time.H>
-#include <pd/base/assert.H>
-
 #pragma GCC visibility push(default)
 
 namespace pd {
@@ -34,11 +30,11 @@ public:
 		assert(impl == NULL);
 	}
 
-	void lock();
-	void unlock();
+	void lock() throw();
+	void unlock() throw();
 
-	void send();
-	bq_err_t wait(interval_t *timeout);
+	void send(bool broadcast = false) throw();
+	bq_err_t wait(interval_t *timeout) throw();
 
 	friend class wait_item_t;
 };

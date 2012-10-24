@@ -43,7 +43,7 @@ void bq_mutex_t::wait_item_t::detach() throw() {
 		mutex.last = me;
 }
 
-bq_err_t bq_mutex_t::lock(interval_t *timeout) {
+bq_err_t bq_mutex_t::lock(interval_t *timeout) throw() {
 	thr::spinlock_guard_t guard(spinlock);
 
 	if(!state) {
@@ -59,7 +59,7 @@ bq_err_t bq_mutex_t::lock(interval_t *timeout) {
 	return item.suspend(false, "mutex-lock");
 }
 
-void bq_mutex_t::unlock() {
+void bq_mutex_t::unlock() throw() {
 	bq_thr_t::impl_t *impl = ({
 		thr::spinlock_guard_t guard(spinlock);
 
