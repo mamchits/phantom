@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -48,48 +48,19 @@ public:
 };
 
 template<typename data_t>
-class paths_t {
+class paths_t : darray2_t<path_t, data_t> {
 public:
-	struct item_t {
-		path_t path;
-		data_t data;
-
-	private:
-		inline item_t() throw() : path(), data() { }
-		inline ~item_t() throw() { }
-
-		template<typename _data_t>
-		inline void set(path_t const &_path, _data_t const &_data) {
-			path = _path; data = _data;
-		}
-
-		friend class paths_t;
-	};
-
-protected:
-	size_t size;
-	item_t *items;
-
-public:
-	inline paths_t() throw() : size(0), items(NULL) { }
-	inline ~paths_t() throw() { if(items) delete [] items; }
+	typedef typename darray2_t<path_t, data_t>::item_t item_t;
+	using darray2_t<path_t, data_t>::items;
+	using darray2_t<path_t, data_t>::size;
 
 	template<typename _data_t>
-	inline void setup(
-		config::switch_t<path_t, config::struct_t<_data_t> > const &config_switch
-	) {
-		if(items) delete [] items;
-		size = 0;
+	inline paths_t(
+		config::switch_t<path_t, config::struct_t<_data_t>> const &config_switch
+	) :
+		darray2_t<path_t, data_t>(config_switch) { }
 
-		for(typename config::switch_t<path_t, config::struct_t<_data_t> >::ptr_t pptr = config_switch; pptr; ++pptr)
-			++size;
-
-		items = new item_t[size];
-
-		item_t *item = items;
-		for(typename config::switch_t<path_t, config::struct_t<_data_t> >::ptr_t pptr = config_switch; pptr; ++pptr)
-			(item++)->set(pptr.key(), pptr.val());
-	}
+	inline ~paths_t() throw() { }
 
 	inline item_t *lookup(string_t const &str) const {
 		size_t priv = 0;
@@ -99,7 +70,7 @@ public:
 		// TODO: Make nonlinear search.
 
 		for(size_t i = 0; i < size; ++i) {
-			if(items[i].path.match(str, priv, cont)) res = &items[i];
+			if(items[i]->key.match(str, priv, cont)) res = items[i];
 			if(!cont) break;
 		}
 

@@ -117,7 +117,7 @@
  * re-balances arena load if exponentially averaged contention exceeds a
  * certain threshold.
  */
-#define	MALLOC_BALANCE
+#undef MALLOC_BALANCE
 
 /*
  * MALLOC_DSS enables use of sbrk(2) to allocate chunks from the data storage
@@ -152,16 +152,31 @@ __FBSDID("$FreeBSD: src/lib/libc/stdlib/malloc.c,v 1.171 2008/05/01 17:25:55 jas
 #include <errno.h>
 #include <limits.h>
 
+#ifndef SIZE_MAX
+# if __WORDSIZE == 64
+#  define SIZE_MAX    (18446744073709551615UL)
+# else
+#  define SIZE_MAX    (4294967295U)
+# endif
+#endif
+
 #ifndef SIZE_T_MAX
 #define SIZE_T_MAX SIZE_MAX
 #endif
 
 #include <pthread.h>
+#include <pd/base/mutex.H>
+#include <pd/base/thr.H>
+
+using namespace pd;
+
+#define pthread_mutex_t mutex_t
 
 #define __isthreaded (1)
-#define _pthread_mutex_trylock pthread_mutex_trylock
-#define _pthread_mutex_lock pthread_mutex_lock
-#define _pthread_mutex_unlock pthread_mutex_unlock
+
+#define _pthread_mutex_trylock(mutex) ((mutex)->lock(), 0)
+#define _pthread_mutex_lock(mutex) (mutex)->lock()
+#define _pthread_mutex_unlock(mutex) (mutex)->unlock()
 #define _pthread_self pthread_self
 
 #include <stdarg.h>
@@ -367,7 +382,7 @@ typedef struct {
 static bool malloc_initialized = false;
 
 /* Used to avoid initialization races. */
-static pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t init_lock __init_priority(111);
 
 /******************************************************************************/
 /*
@@ -793,7 +808,7 @@ static unsigned		narenas_2pow;
 static unsigned		next_arena;
 #  endif
 #endif
-static pthread_mutex_t	arenas_lock; /* Protects arenas initialization. */
+static pthread_mutex_t	arenas_lock __init_priority(111); /* Protects arenas initialization. */
 
 #ifndef NO_TLS
 /*
@@ -988,20 +1003,13 @@ malloc_mutex_unlock(malloc_mutex_t *mutex)
  * allocation callback, in order to avoid infinite recursion.
  */
 
-int __attribute__((weak))
-_pthread_mutex_init_calloc_cb(pthread_mutex_t *mutex,
-    void *(calloc_cb)(size_t, size_t))
-{
 
-	return (0);
-}
+inline void *operator new(size_t, void *__p) throw() { return __p; }
 
 static bool
 malloc_spin_init(pthread_mutex_t *lock)
 {
-
-	if (_pthread_mutex_init_calloc_cb(lock, base_calloc) != 0)
-		return (true);
+	new (lock) pthread_mutex_t;
 
 	return (false);
 }
@@ -1503,6 +1511,13 @@ pages_map(void *addr, size_t size)
 	 * We don't use MAP_FIXED here, because it can cause the *replacement*
 	 * of existing mappings, and we only want to create new mappings.
 	 */
+
+	thr::tstate_t *tstate = thr::tstate;
+	thr::state_t old_state = thr::run;
+
+	if(tstate)
+		old_state = tstate->set(thr::mmap);
+
 	ret = mmap(addr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON,
 	    -1, 0);
 	assert(ret != NULL);
@@ -1527,12 +1542,21 @@ pages_map(void *addr, size_t size)
 
 	assert(ret == NULL || (addr == NULL && ret != addr)
 	    || (addr != NULL && ret == addr));
+
+	if(tstate)
+		tstate->set(old_state);
+
 	return (ret);
 }
 
 static void
 pages_unmap(void *addr, size_t size)
 {
+	thr::tstate_t *tstate = thr::tstate;
+	thr::state_t old_state = thr::run;
+
+	if(tstate)
+		old_state = tstate->set(thr::mmap);
 
 	if (munmap(addr, size) == -1) {
 		char buf[STRERROR_BUF];
@@ -1543,6 +1567,9 @@ pages_unmap(void *addr, size_t size)
 		if (opt_abort)
 			abort();
 	}
+
+	if(tstate)
+		tstate->set(old_state);
 }
 
 #ifdef MALLOC_DSS
@@ -3064,7 +3091,7 @@ arena_palloc(arena_t *arena, size_t alignment, size_t size, size_t alloc_size)
 		node = extent_tree_ad_search(&arena->runs_alloced_ad, &key);
 		assert(node != NULL);
 
-		arena_run_trim_tail(arena, chunk, node, ret, alloc_size, size,
+		arena_run_trim_tail(arena, chunk, node, (arena_run_t*)ret, alloc_size, size,
 		    false);
 	} else {
 		size_t leadsize, trailsize;
@@ -3079,7 +3106,7 @@ arena_palloc(arena_t *arena, size_t alignment, size_t size, size_t alloc_size)
 
 		leadsize = alignment - offset;
 		if (leadsize > 0) {
-			arena_run_trim_head(arena, chunk, node, ret, alloc_size,
+			arena_run_trim_head(arena, chunk, node, (arena_run_t*)ret, alloc_size,
 			    alloc_size - leadsize);
 			ret = (void *)((uintptr_t)ret + leadsize);
 		}
@@ -3088,7 +3115,7 @@ arena_palloc(arena_t *arena, size_t alignment, size_t size, size_t alloc_size)
 		if (trailsize != 0) {
 			/* Trim trailing space. */
 			assert(trailsize < alloc_size);
-			arena_run_trim_tail(arena, chunk, node, ret, size +
+			arena_run_trim_tail(arena, chunk, node, (arena_run_t*)ret, size +
 			    trailsize, size, false);
 		}
 	}
@@ -4567,7 +4594,7 @@ MALLOC_OUT:
 	SPRN(balance, 42);
 #endif
 
-	malloc_spin_init(&arenas_lock);
+	//malloc_spin_init(&arenas_lock);
 
 	malloc_initialized = true;
 	_pthread_mutex_unlock(&init_lock);
@@ -4580,12 +4607,14 @@ MALLOC_OUT:
  */
 /******************************************************************************/
 
+extern "C" {
+
 /*
  * Begin alena malloc functions.
  */
 
 arena_id_t
-arena_create(void)
+arena_create(void) __THROW
 {
 	arena_t *arena;
 
@@ -4611,7 +4640,7 @@ arena_create(void)
 }
 
 void *
-arena_alloc(arena_id_t id, size_t size)
+arena_alloc(arena_id_t id, size_t size) __THROW
 {
 	arena_t *arena = (arena_t *)id;
 
@@ -4637,7 +4666,7 @@ arena_alloc(arena_id_t id, size_t size)
 }
 
 void *
-arena_realloc(arena_id_t id, void *ptr, size_t size)
+arena_realloc(arena_id_t id, void *ptr, size_t size) __THROW
 {
 	arena_t *arena = (arena_t *)id;
 
@@ -4664,7 +4693,7 @@ arena_realloc(arena_id_t id, void *ptr, size_t size)
 }
 
 void
-arena_free(arena_id_t id, void *ptr)
+arena_free(arena_id_t id, void *ptr) __THROW
 {
 	if (ptr != NULL) {
 		assert(malloc_initialized);
@@ -5146,3 +5175,88 @@ __libc_independent_comalloc(size_t n, size_t sizes[], void** chunks)
 }
 
 #pragma GCC visibility pop
+
+} // extern "C"
+
+#ifndef PHANTOM_NO_STAT_MALLOC
+
+#include "../obj.H"
+#include "../setup.H"
+#include <pd/base/config.H>
+#include <pd/base/log.H>
+
+namespace phantom {
+
+class setup_malloc_t : public setup_t, public obj_t {
+	bool *flags;
+
+	virtual void init();
+	virtual void exec() const;
+	virtual void stat_print() const;
+	virtual void fini();
+
+public:
+	struct config_t {
+		inline config_t() throw() { }
+		inline ~config_t() throw() { }
+		inline void check(in_t::ptr_t const &) const { }
+	};
+
+	inline setup_malloc_t(string_t const &name, config_t const &) :
+		setup_t(), obj_t(name), flags(NULL) { }
+
+	inline ~setup_malloc_t() throw() { delete [] flags; }
+};
+
+namespace setup_malloc {
+config_binding_sname(setup_malloc_t);
+config_binding_ctor(setup_t, setup_malloc_t);
+}
+
+void setup_malloc_t::init() {
+	delete [] flags;
+	flags = new bool[narenas];
+
+	for(unsigned i = 0; i < narenas; i++) {
+		arena_t *arena = arenas[i];
+		if ((flags[i] = (arena != NULL)))
+			arena->lock.init();
+	}
+}
+
+void setup_malloc_t::exec() const { }
+
+void setup_malloc_t::stat_print() const {
+	stat::ctx_t ctx(CSTR("arenas"), 1);
+
+	for (unsigned i = 0; i < narenas; i++) {
+		arena_t *arena = arenas[i];
+		if (arena != NULL) {
+			if(!flags[i]) {
+				arena->lock.init();
+				flags[i] = true;
+			}
+
+			char buf[16];
+			size_t len = ({
+				out_t out(buf, sizeof(buf));
+				out.print(i, "02").used();
+			});
+
+			stat::ctx_t ctx(str_t(buf, len));
+			arena->lock.stat_print();
+		}
+	}
+}
+
+void setup_malloc_t::fini() {
+	for(unsigned i = 0; i < narenas; i++) {
+		arena_t *arena = arenas[i];
+		if (arena != NULL) 
+			arena->lock.stat.__tmp_fini();
+	}
+}
+
+} // namespace phantom
+
+#endif // ndef PHANTOM_NO_STAT_MALLOC

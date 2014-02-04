@@ -1,6 +1,6 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -29,10 +29,14 @@ public:
 		batch = SCHED_BATCH
 	};
 
+protected:
+	string_t tname;
+
 private:
-	virtual bq_cont_activate_t &activate() = 0;
+	virtual bq_post_activate_t *post_activate() = 0;
+
 	virtual void init_ext() = 0;
-	virtual void stat_ext(out_t &out, bool clear) = 0;
+	virtual void stat_print_ext() const = 0;
 	virtual void fini_ext() = 0;
 
 	size_t threads;
@@ -46,13 +50,14 @@ private:
 	class ind_t {
 		size_t maxval;
 		size_t val;
-		thr::spinlock_t spin;
+		spinlock_t spinlock;
 
 	public:
-		inline ind_t(size_t _maxval) throw() : maxval(_maxval), val(0), spin() { }
+		inline ind_t(size_t _maxval) throw() :
+			maxval(_maxval), val(0), spinlock() { }
 
 		inline size_t nextval() {
-			thr::spinlock_guard_t _guard(spin);
+			spinlock_guard_t _guard(spinlock);
 			if(val >= maxval) val = 0;
 			return val++;
 		}
@@ -60,11 +65,11 @@ private:
 
 	bq_cont_count_t cont_count;
 	bq_thr_t *bq_thrs;
-	mutable ind_t ind;
+	ind_t mutable ind;
 
 	virtual void init();
-	virtual void exec();
-	virtual void stat(out_t &out, bool clear);
+	virtual void exec() const;
+	virtual void stat_print() const;
 	virtual void fini();
 
 public:
@@ -78,6 +83,7 @@ public:
 		config::enum_t<policy_t> policy; policy_t policy_orig;
 		int priority, priority_orig;
 		sizeval_t threads;
+		string_t tname;
 		sizeval_t limit;
 		sizeval_t event_buf_size;
 		interval_t timeout_prec;

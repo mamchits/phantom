@@ -111,7 +111,6 @@ extern "C" int main() {
 		print(seg);
 	}
 	catch(exception_t const &ex) {
-		ex.log();
 		return 1;
 	}
 	catch(...) {

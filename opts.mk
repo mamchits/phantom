@@ -4,15 +4,10 @@ endif
 
 CXX = g++
 CC = gcc
+
 OPT ?= 3
 
-define CXXVIEW
-CXXSTD = $(shell $(CXX) -E -std=gnu++0x - </dev/null >/dev/null 2>&1 && echo -std=gnu++0x)
-#CXXVERSION = $(shell $(CXX) -dumpversion)
-endef
-
-$(eval $(call CXXVIEW))
-
+CXXSTD = -std=gnu++0x
 
 define FIXZERODEPS
 $(subst %,/,$(1:.d=)): force_fixzerodeps
@@ -25,7 +20,7 @@ endef
 $(eval $(call FIXZERODEPS,$(shell find deps/ -size 0 -printf "%P ")))
 
 
-FIXINC ?= -isystem /usr/include/pd/fixinclude
+FIXINC ?= -isystem . -isystem /usr/include/pd/fixinclude
 
 CPPFLAGS = \
 	$(FIXINC) -D_GNU_SOURCE=1 $(CPPDEFS) -Wundef

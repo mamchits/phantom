@@ -1,6 +1,6 @@
 // This file is part of the pd::bq library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -196,7 +196,7 @@ class sleep_item_t : public bq_thr_t::impl_t::item_t {
 	virtual void detach() throw();
 
 public:
-	inline sleep_item_t(interval_t *timeout) throw() : item_t(timeout) { }
+	inline sleep_item_t(interval_t *timeout) throw() : item_t(timeout, false) { }
 
 	inline ~sleep_item_t() throw() { }
 };
@@ -208,7 +208,7 @@ void sleep_item_t::detach() throw() { }
 int bq_sleep(interval_t *timeout) throw() {
 	sleep_item_t item(timeout);
 
-	bq_err_t err = item.suspend(false, "sleep");
+	bq_err_t err = item.suspend("sleep");
 
 	if(err == bq_timeout) err = bq_ok;
 

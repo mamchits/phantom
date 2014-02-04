@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -193,16 +193,13 @@ public:
 
 	friend class ptr_t;
 
-private: // don't use
-	void *operator new(size_t);
-	void operator delete(void *);
+	void *operator new(size_t) = delete;
+	void operator delete(void *) = delete;
 };
 
 class in_segment_t : public in_t {
 	virtual bool do_expand();
 	virtual void __noreturn unexpected_end() const;
-
-	operator int() const; // to prevent incorrect conversions to bool
 
 public:
 	inline in_segment_t() : in_t() { }
@@ -226,6 +223,8 @@ public:
 	}
 
 	inline ~in_segment_t() throw() { }
+
+	operator int() const = delete;
 
 protected:
 	inline in_segment_t(size_t _off_begin, size_t _off_end, page_t *_page) :
@@ -299,18 +298,17 @@ class in_segment_list_t : public in_segment_t {
 public:
 	inline in_segment_list_t() : in_segment_t(), last(&list) { }
 
+	inline ~in_segment_list_t() throw() { }
+
+	in_segment_list_t(in_segment_list_t const &) = delete;
+	in_segment_list_t &operator=(in_segment_list_t const &) = delete;
+
 	void append(in_segment_t const &_segment);
 
 	inline void clear() {
 		in_segment_t::clear();
 		last = &list;
 	}
-
-	inline ~in_segment_list_t() throw() { }
-
-private: // don't use
-	in_segment_list_t(in_segment_list_t const &);
-	in_segment_list_t &operator=(in_segment_list_t const &);
 };
 
 } // namespace pd

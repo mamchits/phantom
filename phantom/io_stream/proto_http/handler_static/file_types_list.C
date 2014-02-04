@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_static module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -28,7 +28,7 @@ public:
 	};
 
 	struct config_t {
-		config::switch_t<string_t, config::struct_t<type_config_t>, string_t::cmp<lower_t> > list;
+		config::switch_t<string_t, config::struct_t<type_config_t>, string_t::cmp<lower_t>> list;
 
 		inline config_t() throw() : list() { }
 		inline void check(in_t::ptr_t const &) const { }
@@ -47,6 +47,7 @@ config_binding_value_sub(file_types_list_t, type, allow_gzip);
 
 config_binding_sname(file_types_list_t);
 config_binding_value(file_types_list_t, list);
+config_binding_cast(file_types_list_t, file_types_t);
 config_binding_ctor(file_types_t, file_types_list_t);
 }
 
@@ -55,7 +56,7 @@ file_types_list_t::file_types_list_t(string_t const &, config_t const &config) :
 
 	size_t size = 0;
 
-	for(typeof(config.list.ptr()) ptr = config.list; ptr; ++ptr)
+	for(typeof(config.list._ptr()) ptr = config.list; ptr; ++ptr)
 		++size;
 
 	if(!size)
@@ -65,7 +66,7 @@ file_types_list_t::file_types_list_t(string_t const &, config_t const &config) :
 
 	item_t *iptr = items;
 
-	for(typeof(config.list.ptr()) ptr = config.list; ptr; ++ptr) {
+	for(typeof(config.list._ptr()) ptr = config.list; ptr; ++ptr) {
 		string_t const &ext = ptr.key();
 		type_config_t const &config = ptr.val();
 

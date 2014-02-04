@@ -1,6 +1,6 @@
 // This file is part of the pd::bq library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -29,7 +29,9 @@ void bq_out_t::flush() {
 	}
 
 	if(outcount) {
-		size_t res = conn.writev(outvec, outcount, &timeout_cur);
+		size_t res = conn.writev(outvec, outcount, &timeout);
+
+		if(stat) (*stat) += res;
 
 		rpos += res;
 		if(rpos > size) rpos -= size;
@@ -48,7 +50,12 @@ out_t &bq_out_t::ctl(int i) {
 
 out_t &bq_out_t::sendfile(int from_fd, off_t &_offset, size_t &_len) {
 	flush_all();
-	conn.sendfile(from_fd, _offset, _len, &timeout_cur);
+
+	size_t olen = _len;
+	conn.sendfile(from_fd, _offset, _len, &timeout);
+
+	if(stat) (*stat) += (olen - _len);
+
 	return *this;
 }
 

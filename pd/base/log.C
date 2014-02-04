@@ -1,11 +1,10 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
 #include "log.H"
-#include "thr.H"
 #include "time.H"
 #include "config_enum.H"
 
@@ -30,46 +29,42 @@ void backend_default_t::commit(iovec const *iov, size_t count) const throw() {
 	size_t __attribute__((unused)) n = writev(2, iov, count);
 }
 
-static backend_default_t __init_priority(101) const backend_deafult;
+static backend_default_t __init_priority(101) backend_deafult;
 
 aux_t::~aux_t() throw() { }
 
-static __init_priority(110) handler_default_t const handler_default(STRING("*"), &backend_deafult);
+static __init_priority(102)
+	handler_t handler_default(STRING("*"), &backend_deafult, true);
 
-static __thread handler_t const *handler_current = NULL;
+static __thread handler_base_t *handler_current = NULL;
 
-static handler_t const *default_get() {
-	return handler_current ?: &handler_default;
+static handler_base_t *&default_current_funct() throw() {
+	if(!handler_current)
+		handler_current = &handler_default;
+
+	return handler_current;
 }
 
-static void default_set(handler_t const *handler) {
-	handler_current = handler;
+static handler_base_t::current_funct_t current_funct = &default_current_funct;
+
+handler_base_t::current_funct_t
+	handler_base_t::setup(current_funct_t _current_funct) throw()
+{
+	current_funct_t res = current_funct;
+	current_funct = _current_funct ?: &default_current_funct;
+	return res;
 }
 
-static void (*set_func)(handler_t const *) = &default_set;
-static handler_t const *(*get_func)() = &default_get;
-
-void handler_t::init(
-	void (*_set)(handler_t const *), handler_t const *(*_get)()
-) throw() {
-	set_func = _set ?: &default_set;
-	get_func = _get ?: &default_get;
-}
-
-handler_t const *handler_t::get() throw() {
+handler_base_t *&handler_base_t::current() throw() {
 	try {
-		return (*get_func)() ?: &handler_default;
-	}
-	catch(...) {
-		return &handler_default;
-	}
-}
+		handler_base_t *&cur = (*current_funct)();
+		if(!cur) cur = &handler_default;
 
-void handler_t::set(handler_t const *handler) throw() {
-	try {
-		(*set_func)(handler);
+		return cur;
 	}
 	catch(...) { }
+
+	return default_current_funct();
 }
 
 static string_t const levels[] = {
@@ -79,10 +74,27 @@ static string_t const levels[] = {
 	STRING("[error]")
 };
 
-void handler_default_t::vput(
+size_t handler_base_t::print_label(out_t *out, bool sep) const {
+	if(this == &handler_default)
+		return 0;
+
+	if(root /* && sep */)
+		return 0;
+
+	size_t res = root ? 0 : prev->print_label(out, true);
+
+	if(out) {
+		(*out)(_label);
+		if(sep) (*out)(' ');
+	}
+
+	return res + _label.size() + 1;
+}
+
+void handler_t::vput(
 	level_t level, aux_t const *aux, char const *format, va_list args
 ) const throw() {
-	if(backend.level() > level)
+	if(_backend.level() > level)
 		return;
 
 	int __errno = errno; // Save errno for proper %m format handling
@@ -93,7 +105,11 @@ void handler_default_t::vput(
 		out_t out(buf, sizeof(buf));
 
 		try {
-			out.print(timeval_current(), "+dz.")(' ')(levels[level])(' ')(label)(' ');
+			out.print(timeval::current(), "+dz.")(' ')(levels[level])(' ')('[');
+
+			print_label(&out);
+
+			out(']')(' ');
 		}
 		catch(...) { }
 
@@ -124,10 +140,10 @@ void handler_default_t::vput(
 			(iovec){ _buf, _len },
 		};
 
-		backend.commit(vec, 2);
+		_backend.commit(vec, 2);
 	}
 	else
-		backend.commit(buf, len);
+		_backend.commit(buf, len);
 }
 
 config_enum_internal_sname(log, level_t);

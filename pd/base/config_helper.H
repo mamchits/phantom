@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -27,7 +27,7 @@ string_t parse_name(in_t::ptr_t &ptr);
 char skip_space(in_t::ptr_t &ptr);
 void print_off(out_t &out, int off);
 
-struct exception_t  {
+struct exception_t {
 	in_t::ptr_t ptr;
 
 	inline exception_t(in_t::ptr_t const &_ptr) throw() : ptr(_ptr) { }

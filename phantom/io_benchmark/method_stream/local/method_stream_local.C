@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_benchmark::method_stream::local module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -61,7 +61,8 @@ void method_stream_local_t::bind(int /*fd*/) const { }
 namespace method_stream_local {
 config_binding_sname(method_stream_local_t);
 config_binding_value(method_stream_local_t, path);
-config_binding_parent(method_stream_local_t, method_stream_t, 1);
+config_binding_parent(method_stream_local_t, method_stream_t);
+config_binding_cast(method_stream_local_t, method_t);
 config_binding_ctor(method_t, method_stream_local_t);
 }
 

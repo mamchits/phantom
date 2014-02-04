@@ -1,6 +1,6 @@
 // This file is part of the pd::http library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -54,14 +54,15 @@ static __thread time_current_cache_t time_current_cache = {
 string_t time_current_string(timeval_t &timeval_curr) {
 	time_current_cache_t &cache = time_current_cache;
 
-	timeval_t t = timeval_current();
+	timeval_t t = timeval::current();
 	timeval_curr = t;
 
-	uint64_t time = (t - timeval_t(0)) / interval_second;
+	uint64_t cache_time = (t - timeval::unix_origin) / interval::second;
 
-	if(time != cache.last_time) {
-		unsigned long date = time / (60 * 60 * 24);
-		if(date != cache.last_date) {
+	if(cache_time != cache.last_time) {
+		unsigned long cache_date = cache_time / (60 * 60 * 24);
+
+		if(cache_date != cache.last_date) {
 			timestruct_t ts(t);
 
 			copy3(wnames[ts.wday], cache.buf);
@@ -69,17 +70,18 @@ string_t time_current_string(timeval_t &timeval_curr) {
 			copy3(mnames[ts.month], cache.buf + 5 + 3);
 			dig4(ts.year + 1, cache.buf + 5 + 3 + 4);
 
-			cache.last_date = date;
-			cache.last_time = time;
+			cache.last_date = cache_date;
 		}
 
-		unsigned int _time = time % (60 * 60 * 24);
+		// (timeval::unix_origin - timeval::epch_origin) % (60 * 60 * 24) == 0
+
+		unsigned int _time = cache_time % (60 * 60 * 24);
 
 		dig2(_time % 60, cache.buf + 5 + 3 + 4 + 5 + 3 + 3); _time /= 60;
 		dig2(_time % 60, cache.buf + 5 + 3 + 4 + 5 + 3); _time /= 60;
 		dig2(_time, cache.buf + 5 + 3 + 4 + 5);
 
-		cache.last_time = time;
+		cache.last_time = cache_time;
 	}
 
 	return

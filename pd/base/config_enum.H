@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -49,7 +49,7 @@ public:
 
 		inline ~item_t() throw() { }
 
-		friend class helper_t<enum_t<val_t> >;
+		friend class helper_t<enum_t<val_t>>;
 	};
 
 	inline enum_t(val_t _val) throw() : val(_val) { }
@@ -79,7 +79,7 @@ public:
 	static config::enum_t<type_t::val_t>::item_t config_enum_value_##val_t##_##value(STRING(#value), type_t::value)
 
 template<typename val_t>
-struct helper_t<enum_t<val_t> > {
+struct helper_t<enum_t<val_t>> {
 	static inline void parse(in_t::ptr_t &ptr, enum_t<val_t> &val) {
 		val = enum_t<val_t>::item_t::find(parse_name(ptr), ptr).val;
 	}

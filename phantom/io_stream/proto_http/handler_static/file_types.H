@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_static module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -19,8 +19,8 @@ struct file_type_t {
 	bool need_charset;
 	bool allow_gzip;
 
-	inline file_type_t()
-		: mime_type(), need_charset(false), allow_gzip(false) { }
+	inline file_type_t() :
+		mime_type(), need_charset(false), allow_gzip(false) { }
 
 	inline ~file_type_t() throw() { }
 };

@@ -1,34 +1,46 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
 #pragma once
 
-#include <pd/base/thr.H>
 #include <pd/base/string.H>
+#include <pd/base/stat.H>
 
 #pragma GCC visibility push(default)
 
 namespace pd {
 
-class log_file_handler_t {
-	mutable thr::spinlock_t spinlock;
-	string_t const filename_z;
-	string_t const header;
+namespace log_file {
+class __hidden handler_t;
+}
 
-	struct file_t;
-	file_t *current, *old;
+class log_file_t {
+	typedef log_file::handler_t handler_t;
 
-	int acquire() const throw();
-	void release(int fd) const throw();
+	handler_t &handler;
 
 public:
-	log_file_handler_t(string_t const &filename, string_t const &_header);
-	~log_file_handler_t() throw();
+	struct guard_t {
+		handler_t  &handler;
+		bool used;
+		int const fd;
+		stat::count_t &ocount;
 
-	void check();
+		guard_t(log_file_t const &log_file) throw();
+		~guard_t() throw();
+	};
+
+	friend struct guard_t;
+
+	log_file_t(string_t const &filename, string_t const &_header);
+	~log_file_t() throw();
+
+	void _init();
+	void _stat_print() const;
+	void check() const;
 
 	ssize_t writev(iovec const *iov, size_t count) const throw();
 

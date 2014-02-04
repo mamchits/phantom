@@ -1,10 +1,11 @@
 // This file is part of the phantom::io_benchmark::method_stream module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
 #include "method_stream.H"
+#include "logger.H"
 #include "transport.H"
 #include "proto.H"
 #include "source.H"
@@ -19,26 +20,152 @@
 
 #include <pd/base/exception.H>
 #include <pd/base/fd_guard.H>
+#include <pd/base/stat_items.H>
 
 namespace phantom { namespace io_benchmark {
 
 MODULE(io_benchmark_method_stream);
 
+namespace method_stream {
+
+class load_t {
+	spinlock_t spinlock;
+	interval_t real, event;
+
+public:
+	inline load_t() throw() :
+		spinlock(), real(interval::zero), event(interval::zero) { }
+
+	inline ~load_t() throw() { }
+
+	load_t(load_t const &) = delete;
+	load_t &operator=(load_t const &) = delete;
+
+	inline void put(interval_t _real, interval_t _event) {
+		spinlock_guard_t guard(spinlock);
+		real += _real;
+		event += _event;
+	}
+
+	typedef load_t val_t;
+
+	class res_t {
+	public:
+		interval_t real, event;
+
+		inline res_t(load_t &load) throw() {
+			spinlock_guard_t guard(load.spinlock);
+			real = load.real; load.real = interval::zero;
+			event = load.event; load.event = interval::zero;
+		}
+
+		inline res_t() throw() :
+			real(interval::zero), event(interval::zero) { }
+
+		inline ~res_t() throw() { }
+
+		inline res_t(res_t const &) = default;
+		inline res_t &operator=(res_t const &) = default;
+
+		inline res_t &operator+=(res_t const &res) throw() {
+			real += res.real;
+			event += res.event;
+
+			return *this;
+		}
+	};
+
+	friend class res_t;
+};
+
+typedef stat::count_t conns_t;
+typedef stat::count_t icount_t;
+typedef stat::count_t ocount_t;
+typedef stat::mmcount_t mmtasks_t;
+
+typedef stat::items_t<
+	conns_t,
+	icount_t,
+	ocount_t,
+	mmtasks_t,
+	load_t
+> stat_base_t;
+
+struct stat_t : stat_base_t {
+	inline stat_t() throw() : stat_base_t(
+		STRING("conns"),
+		STRING("in"),
+		STRING("out"),
+		STRING("mmtasks"),
+		STRING("load")
+	) { }
+
+	inline ~stat_t() throw() { }
+
+	inline conns_t &conns() throw() { return item<0>(); }
+	inline icount_t &icount() throw() { return item<1>(); }
+	inline ocount_t &ocount() throw() { return item<2>(); }
+	inline mmtasks_t &mmtasks() throw() { return item<3>(); }
+	inline load_t &load() throw() { return item<4>(); }
+};
+
+struct loggers_t : sarray1_t<logger_t *> {
+	inline loggers_t(
+		config::list_t<config::objptr_t<logger_t>> const &list
+	) :
+		sarray1_t<logger_t *>(list) { }
+
+	inline ~loggers_t() throw() { }
+
+	inline void init(string_t const &name) const {
+		for(size_t i = 0; i < size; ++i)
+			items[i]->init(name);
+	}
+
+	inline void run(string_t const &name) const {
+		for(size_t i = 0; i < size; ++i)
+			items[i]->run(name);
+	}
+
+	inline void stat_print(string_t const &name) const {
+		stat::ctx_t ctx(CSTR("loggers"), 1);
+		for(size_t i = 0; i < size; ++i)
+			items[i]->stat_print(name);
+	}
+
+	inline void fini(string_t const &name) const {
+		for(size_t i = 0; i < size; ++i)
+			items[i]->fini(name);
+	}
+
+	inline void commit(
+		in_segment_t const &request, in_segment_t &tag, result_t const &res
+	) const {
+		for(size_t i = 0; i < size; ++i) {
+			logger_t *logger = items[i];
+			if(res.log_level >= logger->level)
+				logger->commit(request, tag, res);
+		}
+	}
+};
+
+} // namespace method_stream
+
 method_stream_t::config_t::config_t() throw() :
-	ibuf_size(4 * sizeval_kilo), obuf_size(sizeval_kilo),
-	timeout(interval_second), source(), transport(), proto(), loggers() { }
+	ibuf_size(4 * sizeval::kilo), obuf_size(sizeval::kilo),
+	timeout(interval::second), source(), transport(), proto(), loggers() { }
 
 void method_stream_t::config_t::check(in_t::ptr_t const &ptr) const {
-	if(ibuf_size > sizeval_mega)
+	if(ibuf_size > sizeval::mega)
 		config::error(ptr, "ibuf_size is too big");
 
-	if(ibuf_size < sizeval_kilo)
+	if(ibuf_size < sizeval::kilo)
 		config::error(ptr, "ibuf_size is too small");
 
-	if(obuf_size > sizeval_mega)
+	if(obuf_size > sizeval::mega)
 		config::error(ptr, "obuf_size is too big");
 
-	if(obuf_size < sizeval_kilo)
+	if(obuf_size < sizeval::kilo)
 		config::error(ptr, "obuf_size is too small");
 
 	if(!source)
@@ -99,8 +226,8 @@ static transport_default_t const default_transport;
 
 } // namespace method_stream
 
-method_stream_t::method_stream_t(string_t const &, config_t const &config) :
-	method_t(), timeout(config.timeout),
+method_stream_t::method_stream_t(string_t const &name, config_t const &config) :
+	method_t(name), timeout(config.timeout),
 	ibuf_size(config.ibuf_size), obuf_size(config.obuf_size),
 	source(*config.source),
 	transport(*({
@@ -111,18 +238,12 @@ method_stream_t::method_stream_t(string_t const &, config_t const &config) :
 
 		transport;
 	})),
-	proto(*config.proto), loggers() {
+	proto(*config.proto), loggers(*new loggers_t(config.loggers)),
+	mcount(tags), stat(*new stat_t) { }
 
-	for(typeof(config.loggers.ptr()) lptr = config.loggers; lptr; ++lptr)
-		++loggers.size;
-
-	loggers.items = new logger_t *[loggers.size];
-
-	size_t i = 0;
-	for(typeof(config.loggers.ptr()) lptr = config.loggers; lptr; ++lptr)
-		loggers.items[i++] = lptr.val();
-
-	network_ind = proto.maxi();
+method_stream_t::~method_stream_t() throw() {
+	delete &stat;
+	delete &loggers;
 }
 
 int method_stream_t::connect(interval_t &timeout) const {
@@ -148,23 +269,101 @@ int method_stream_t::connect(interval_t &timeout) const {
 	return fd;
 }
 
-method_stream_t::~method_stream_t() throw() { }
+namespace method_stream {
 
-void method_stream_t::loggers_t::commit(
-	in_segment_t const &request, in_segment_t &tag, result_t const &res
-) const {
-	for(size_t i = 0; i < size; ++i) {
-		logger_t *logger = items[i];
-		if(res.log_level >= logger->level)
-			logger->commit(request, tag, res);
+#define STREAM_ERROR_LIST \
+	STREAM_ERROR(0) \
+	STREAM_ERROR(EPERM) \
+	STREAM_ERROR(ENOENT) \
+	STREAM_ERROR(EIO) \
+	STREAM_ERROR(ENXIO) \
+	STREAM_ERROR(EBADF) \
+	STREAM_ERROR(ENOMEM) \
+	STREAM_ERROR(EACCES) \
+	STREAM_ERROR(EFAULT) \
+	STREAM_ERROR(EBUSY) \
+	STREAM_ERROR(EINVAL) \
+	STREAM_ERROR(EMFILE) \
+	STREAM_ERROR(EPIPE) \
+	STREAM_ERROR(ENOSYS) \
+	STREAM_ERROR(ENODATA) \
+	STREAM_ERROR(ENONET) \
+	STREAM_ERROR(EPROTO) \
+	STREAM_ERROR(EPROTOTYPE) \
+	STREAM_ERROR(ENOPROTOOPT) \
+	STREAM_ERROR(EPROTONOSUPPORT) \
+	STREAM_ERROR(ESOCKTNOSUPPORT) \
+	STREAM_ERROR(EPFNOSUPPORT) \
+	STREAM_ERROR(EAFNOSUPPORT) \
+	STREAM_ERROR(EADDRINUSE) \
+	STREAM_ERROR(EADDRNOTAVAIL) \
+	STREAM_ERROR(ENETDOWN) \
+	STREAM_ERROR(ENETUNREACH) \
+	STREAM_ERROR(ENETRESET) \
+	STREAM_ERROR(ECONNABORTED) \
+	STREAM_ERROR(ECONNRESET) \
+	STREAM_ERROR(ETIMEDOUT) \
+	STREAM_ERROR(ECONNREFUSED) \
+	STREAM_ERROR(EHOSTDOWN) \
+	STREAM_ERROR(EHOSTUNREACH) \
+	STREAM_ERROR(EREMOTEIO) \
+	STREAM_ERROR(ECANCELED)
+
+static int const vals[] {
+#define STREAM_ERROR(x) x,
+	STREAM_ERROR_LIST
+#undef STREAM_ERROR
+};
+
+static size_t const vals_count = sizeof(vals) / sizeof(vals[0]);
+
+static size_t err_idx(int err) {
+	size_t idx = 0;
+	switch(err) {
+#define STREAM_ERROR(x) \
+		case x: ++idx;
+
+		STREAM_ERROR_LIST
+
+#undef STREAM_ERROR
 	}
+
+	return vals_count - idx;
 }
+
+#undef STREAM_ERROR_LIST
+
+struct tags_t : mcount_t::tags_t {
+	inline tags_t() : mcount_t::tags_t() { }
+	inline ~tags_t() throw() { }
+
+	virtual size_t size() const { return vals_count + 1; }
+
+	virtual void print(out_t &out, size_t idx) const {
+		assert(idx <= vals_count);
+
+		if(idx < vals_count) {
+			char buf[128];
+			char *res = strerror_r(vals[idx], buf, sizeof(buf));
+			buf[sizeof(buf) - 1] = '\0';
+			out(str_t(res, strlen(res)));
+		}
+		else
+			out(CSTR("Other"));
+	}
+};
+
+tags_t const tags;
+
+} // namespace method_stream
+
+mcount_t::tags_t const &method_stream_t::tags = method_stream::tags;
 
 namespace method_stream {
 bq_spec_decl(conn_t, conn_current);
 }
 
-bool method_stream_t::test(stat_t &stat) const {
+bool method_stream_t::test(times_t &times) const {
 	conn_t *&conn = method_stream::conn_current;
 
 	try {
@@ -180,12 +379,11 @@ bool method_stream_t::test(stat_t &stat) const {
 			return false;
 		}
 
-		stat_t::tcount_guard_t tcount_guard(stat);
+		++stat.mmtasks();
 
 		_retry:
 
 		result_t res;
-		bool event = false;
 		interval_t cur_timeout = timeout;
 
 		try {
@@ -194,15 +392,16 @@ bool method_stream_t::test(stat_t &stat) const {
 			if(!conn) {
 				conn = transport.new_connect(connect(cur_timeout), ctl());
 				conn->setup_connect();
-				event = true;
-				res.time_conn = max(res.time_start, timeval_current());
+				++stat.conns();
+				res.time_conn = max(res.time_start, timeval::current());
 			}
 			else
 				res.time_conn = res.time_start;
 
 			try {
 				char obuf[obuf_size];
-				bq_out_t out(*conn, obuf, sizeof(obuf), cur_timeout);
+				bq_out_t out(*conn, obuf, sizeof(obuf), &stat.ocount());
+				out.timeout_set(cur_timeout);
 
 				out.ctl(1);
 				out(request).flush_all();
@@ -210,7 +409,7 @@ bool method_stream_t::test(stat_t &stat) const {
 
 				res.size_out = request.size();
 
-				cur_timeout = out.timeout_val();
+				cur_timeout = out.timeout_get();
 			}
 			catch(exception_sys_t const &ex) {
 				if(conn->requests && ex.errno_val == EPIPE) {
@@ -222,19 +421,20 @@ bool method_stream_t::test(stat_t &stat) const {
 				throw;
 			}
 
-			res.time_send = max(res.time_conn, timeval_current());
+			res.time_send = max(res.time_conn, timeval::current());
 
 			conn->wait_read(&cur_timeout);
 
-			res.time_recv = max(res.time_send, timeval_current());
+			res.time_recv = max(res.time_send, timeval::current());
 
 			{
-				bq_in_t in(*conn, ibuf_size, cur_timeout);
+				bq_in_t in(*conn, ibuf_size, &stat.icount());
+				in.timeout_set(cur_timeout);
 				in_t::ptr_t ptr = in;
 				in_t::ptr_t ptr_begin = ptr;
 
 				try {
-					if(!proto.reply_parse(ptr, request, res.proto_code, stat, res.log_level)) {
+					if(!proto.reply_parse(ptr, request, res.proto_code, res.log_level)) {
 						conn->shutdown();
 						delete conn;
 						conn = NULL;
@@ -250,7 +450,7 @@ bool method_stream_t::test(stat_t &stat) const {
 						goto _retry;
 					}
 
-					cur_timeout = in.timeout_val();
+					cur_timeout = in.timeout_get();
 
 					res.size_in = ptr - ptr_begin;
 					res.reply = in_segment_t(ptr_begin, res.size_in);
@@ -261,7 +461,7 @@ bool method_stream_t::test(stat_t &stat) const {
 				if(conn)
 					++conn->requests;
 
-				cur_timeout = in.timeout_val();
+				cur_timeout = in.timeout_get();
 
 				res.size_in = ptr - ptr_begin;
 				res.reply = in_segment_t(ptr_begin, res.size_in);
@@ -280,9 +480,6 @@ bool method_stream_t::test(stat_t &stat) const {
 				res.log_level = logger_t::transport_error;
 			else
 				res.log_level = logger_t::network_error;
-
-			str_t msg = ex.msg();
-			log_warning("Connection closed: %.*s", (int)msg.size(), msg.ptr());
 		}
 		catch(exception_t const &ex) {
 			delete conn;
@@ -290,12 +487,9 @@ bool method_stream_t::test(stat_t &stat) const {
 
 			res.err = EPROTO;
 			res.log_level = logger_t::transport_error;
-
-			str_t msg = ex.msg();
-			log_warning("Connection closed: %.*s", (int)msg.size(), msg.ptr());
 		}
 
-		timeval_t time_end = timeval_current();
+		timeval_t time_end = timeval::current();
 
 		if(!res.time_conn.is_real())
 			res.time_conn = max(res.time_start, time_end);
@@ -310,18 +504,14 @@ bool method_stream_t::test(stat_t &stat) const {
 
 		res.interval_event = timeout - cur_timeout;
 
-		{
-			thr::spinlock_guard_t guard(stat.spinlock);
+		--stat.mmtasks();
 
-			stat.update_time(res.time_end - res.time_start, res.interval_event);
+		interval_t interval_real = res.time_end - res.time_start;
 
-			if(event) stat.event();
+		times.inc(interval_real);
 
-			stat.update(network_ind, res.err);
-			if(!res.err) {
-				stat.update_size(res.size_in, res.size_out);
-			}
-		}
+		stat.load().put(interval_real, res.interval_event);
+		mcount.inc(method_stream::err_idx(res.err));
 
 		loggers.commit(request, tag, res);
 	}
@@ -336,50 +526,60 @@ bool method_stream_t::test(stat_t &stat) const {
 	return true;
 }
 
-void method_stream_t::init() {
-	source.init();
+void method_stream_t::do_init() {
+	stat.init();
+	mcount.init();
+	proto.init(name);
+	source.init(name);
+	loggers.init(name);
 }
 
-void method_stream_t::stat(out_t &out, bool clear, bool hrr_flag) const {
-	source.stat(out, clear, hrr_flag);
+void method_stream_t::do_run() const {
+	proto.run(name);
+	source.run(name);
+	loggers.run(name);
 }
 
-void method_stream_t::fini() {
-	source.fini();
+void method_stream_t::do_stat_print() const {
+	stat.print();
+	mcount.print();
+	proto.stat_print(name);
+	source.stat_print(name);
+	loggers.stat_print(name);
 }
 
-class network_descr_t : public descr_t {
-	static size_t const max_errno = 140;
-
-	virtual size_t value_max() const { return max_errno; }
-
-	virtual void print_header(out_t &out) const {
-		out(CSTR("network"));
-	}
-
-	virtual void print_value(out_t &out, size_t value) const {
-		if(value < max_errno) {
-			char buf[128];
-			char *res = strerror_r(value, buf, sizeof(buf));
-			buf[sizeof(buf) - 1] = '\0';
-			out(str_t(res, strlen(res)));
-		}
-		else
-			out(CSTR("Unknown error"));
-	}
-public:
-	inline network_descr_t() throw() : descr_t() { }
-	inline ~network_descr_t() throw() { }
-};
-
-static network_descr_t const network_descr;
-
-size_t method_stream_t::maxi() const throw() {
-	return network_ind + 1;
-}
-
-descr_t const *method_stream_t::descr(size_t ind) const throw() {
-	return (ind == network_ind) ? &network_descr : proto.descr(ind);
+void method_stream_t::do_fini() {
+	proto.fini(name);
+	source.fini(name);
+	loggers.fini(name);
 }
 
 }} // namespace phantom::io_benchmark
+
+namespace pd { namespace stat {
+
+typedef phantom::io_benchmark::method_stream::load_t load_t;
+
+template<>
+void ctx_t::helper_t<load_t>::print(
+	ctx_t &ctx, str_t const &_tag,
+	load_t const &, load_t::res_t const &res
+) {
+	if(ctx.pre(_tag, NULL, 0, NULL, 0)) {
+		uint64_t val = res.real > interval::zero ? (res.real - res.event) * 1000 / res.real : 0;
+
+		if(ctx.format == ctx.json) {
+			ctx.out.print(val / 1000)('.').print(val % 1000, "03");
+		}
+		else if(ctx.format == ctx.html) {
+			ctx.off();
+			ctx.out
+				(CSTR("<td>"))
+				.print(val / 1000)('.').print(val % 1000, "03")
+				(CSTR("</td>"))
+			;
+		}
+	}
+}
+
+}} // namespace pd::stat

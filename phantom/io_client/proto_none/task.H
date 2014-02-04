@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_none module.
-// Copyright (C) 2010-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2010-2012, YANDEX LLC.
+// Copyright (C) 2010-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2010-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -29,26 +29,26 @@ public:
 	virtual void clear() = 0;
 
 	inline void set_begin() {
-		timeval_t now = timeval_current();
+		timeval_t now = timeval::current();
 
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::guard_t guard(cond);
 		if(!begin_time.is_real()) begin_time = now;
 	}
 
 	inline void set_ready() {
-		timeval_t now = timeval_current();
+		timeval_t now = timeval::current();
 		assert(begin_time.is_real());
 
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 		status = ready;
 		complete_time = now;
-		cond.send();
+		handler.send();
 	}
 
 	inline void cancel() {
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 		status = canceled;
-		cond.send();
+		handler.send();
 	}
 
 	inline bool active() {
@@ -56,19 +56,19 @@ public:
 	}
 
 	inline bool wait(interval_t *timeout, interval_t *wtime) {
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 
 		while(true) {
 			if(status != processed) {
 				bool res = (status == ready);
 				if(res) {
-					assert(complete_time != timeval_never);
+					assert(complete_time != timeval::never);
 					if(wtime) *wtime = (complete_time - begin_time);
 				}
 				return res;
 			}
 
-			if(!bq_success(cond.wait(timeout)))
+			if(!bq_success(handler.wait(timeout)))
 				return false;
 		}
 	}
@@ -79,7 +79,7 @@ public:
 
 protected:
 	inline task_t() :
-		begin_time(timeval_never), complete_time(timeval_never),
+		begin_time(timeval::never), complete_time(timeval::never),
 		status(processed), cond() { }
 
 	virtual ~task_t() throw();

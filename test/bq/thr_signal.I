@@ -1,41 +1,36 @@
-#include <pd/base/thr.H>
+#include <pd/base/cond.H>
 
-namespace pd { namespace thr {
+namespace pd {
 
-class signal_t : mutex_t {
+class signal_t {
 	size_t count;
-	pthread_cond_t pthread_cond;
+	cond_t cond;
 
 public:
-	inline signal_t() throw() : count(0) {
-		pthread_cond_init(&pthread_cond, NULL);
-	}
+	inline signal_t() throw() : count(0), cond() { }
 
 	inline void wait() throw() {
-		mutex_guard_t guard(*this);
+		cond_t::handler_t handler(cond);
 
 		while(!count)
-			pthread_cond_wait(&pthread_cond, &pthread_mutex);
+			handler.wait();
 
 		--count;
 
 		if(count)
-			 pthread_cond_signal(&pthread_cond);
+			handler.send();
 	}
 
 	inline void send() throw() {
-		mutex_guard_t guard(*this);
+		cond_t::handler_t handler(cond);
 		++count;
-		pthread_cond_signal(&pthread_cond);
+		handler.send();
 	}
 
-	inline ~signal_t() throw() {
-		pthread_cond_destroy(&pthread_cond);
-	}
+	inline ~signal_t() throw() { }
 
-private: // don't use
-	signal_t(signal_t const &);
-	signal_t &operator=(signal_t const &);
+	signal_t(signal_t const &) = delete;
+	signal_t &operator=(signal_t const &) = delete;
 };
 
-}} // namespace pd::thr
+} // namespace pd

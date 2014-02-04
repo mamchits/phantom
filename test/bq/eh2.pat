@@ -6,6 +6,6 @@ Ok 2
 Ok 3
 -b thr2
 Ok 4
--a thr1
+-a thr2
 Ok 6
 Ok 7

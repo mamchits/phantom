@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_fcgi module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -8,8 +8,8 @@
 #include "entry.I"
 #include "fcgi.I"
 
-#include <pd/bq/bq_in.H>
 #include <pd/bq/bq_job.H>
+#include <pd/bq/bq_in.H>
 
 #include <pd/base/exception.H>
 #include <pd/base/fd_guard.H>
@@ -18,7 +18,7 @@ namespace phantom { namespace io_client { namespace proto_fcgi {
 
 bool instance_t::do_recv(in_t::ptr_t &ptr) {
 	{
-		bq_cond_guard_t guard(in_cond);
+		bq_cond_t::handler_t handler(in_cond);
 		while(true) {
 			if(!work)
 				return false;
@@ -26,8 +26,7 @@ bool instance_t::do_recv(in_t::ptr_t &ptr) {
 			if(tasks.count())
 				break;
 
-			if(!bq_success(in_cond.wait(NULL)))
-				throw exception_sys_t(log::error, errno, "in_cond.wait: %m");
+			handler.wait();
 		}
 	}
 
@@ -91,9 +90,9 @@ void instance_t::proc(bq_conn_t &conn) {
 	assert(proto.entry);
 
 	char obuf[proto.prms.obuf_size];
-	bq_out_t out(conn, obuf, sizeof(obuf), interval_second); // FIXME:
+	bq_out_t out(conn, obuf, sizeof(obuf));
 
-	bq_in_t in(conn, proto.prms.ibuf_size, interval_second); // FIXME:
+	bq_in_t in(conn, proto.prms.ibuf_size);
 	in_t::ptr_t ptr(in);
 
 #if 0
@@ -103,6 +102,8 @@ void instance_t::proc(bq_conn_t &conn) {
 		params.add(val_max_reqs, string_t::empty);
 		params.add(val_mpxs_conns, string_t::empty);
 
+		out.timeout_set(proto.prms.out_timeout);
+
 		out.ctl(1);
 		record_t(type_get_values, 0, params).print(out);
 		out.flush_all();
@@ -111,6 +112,8 @@ void instance_t::proc(bq_conn_t &conn) {
 #endif
 #if 0
 	{
+		in.timeout_set(proto.prms.in_timeout);
+
 		record_t record = parse_record(ptr);
 
 		if(record.id || record.type != type_get_values_result) {
@@ -120,7 +123,6 @@ void instance_t::proc(bq_conn_t &conn) {
 
 		log_get_values_result(record.data);
 
-		in.timeout_reset();
 		in.truncate(ptr);
 	}
 #endif
@@ -134,8 +136,10 @@ void instance_t::proc(bq_conn_t &conn) {
 		out_guard.relax();
 
 		try {
-			while(do_recv(ptr)) {
-				in.timeout_reset();
+			while(true) {
+				in.timeout_set(proto.prms.in_timeout);
+				if(!do_recv(ptr))
+					break;
 				in.truncate(ptr);
 			}
 		}
@@ -195,8 +199,10 @@ ref_t<task_t> instance_t::create_task(
 		out.timeout_set(*timeout);
 
 		{
-			bq_cond_guard_t guard(in_cond);
-			in_cond.send();
+			// TODO: make in_cond protect tasks
+
+			bq_cond_t::handler_t handler(in_cond);
+			handler.send();
 		}
 
 		try {
@@ -243,13 +249,14 @@ ref_t<task_t> instance_t::create_task(
 			out.ctl(0);
 		}
 		catch(...) {
+			bq_cond_t::handler_t handler(in_cond);
 			work = false;
-			in_cond.send();
+			handler.send();
 
 			task = ref_t<task_t>();
 		}
 
-		*timeout = out.timeout_val();
+		*timeout = out.timeout_get();
 	}
 
 	out_mutex.unlock();
@@ -258,7 +265,7 @@ ref_t<task_t> instance_t::create_task(
 }
 
 void instance_t::do_abort(ref_t<task_t> task) {
-	interval_t timeout = interval_second; // FIXME
+	interval_t timeout = proto.prms.out_timeout;
 
 	int res = out_mutex.lock(&timeout);
 
@@ -283,8 +290,9 @@ void instance_t::do_abort(ref_t<task_t> task) {
 			out.ctl(0);
 		}
 		catch(...) {
+			bq_cond_t::handler_t handler(in_cond);
 			work = false;
-			in_cond.send();
+			handler.send();
 		}
 	}
 
@@ -293,15 +301,19 @@ void instance_t::do_abort(ref_t<task_t> task) {
 	return;
 }
 
+static string_t const abort_label = STRING("abort");
+
 void instance_t::abort(task_t *task) {
-	bq_job_t<typeof(&instance_t::do_abort)>::create(
-		log::handler_t::get_label(), bq_thr_get(),
-		*this, &instance_t::do_abort, task
-	);
+	log::handler_t handler(abort_label);
+	bq_job(&instance_t::do_abort)(*this, task)->run(bq_thr_get());
 }
 
+void instance_t::init() { }
+
+void instance_t::stat_print() { }
+
 instance_t::~instance_t() throw() {
-	assert(rank == 0);
+	assert(trank == 0);
 	assert(pout == 0);
 }
 

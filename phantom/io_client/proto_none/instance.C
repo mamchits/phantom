@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_none module.
-// Copyright (C) 2010-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2010-2012, YANDEX LLC.
+// Copyright (C) 2010-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2010-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -16,202 +16,187 @@
 
 namespace phantom { namespace io_client { namespace proto_none {
 
-bool instance_t::do_send(out_t &out) {
+void instance_t::do_send(out_t &out) {
+	stat.send_tstate().set(send::idle);
+
 	{
-		bq_cond_guard_t guard(out_cond);
+		bq_cond_t::handler_t handler(out_cond);
 
 		while(true) {
 			if(!work)
-				return false;
+				return;
 
 			if(pending)
 				break;
 
-			if(!bq_success(out_cond.wait(NULL)))
-				throw exception_sys_t(log::error, errno, "out_cond.wait: %m");
+			handler.wait();
 		}
 
 		--pending;
 	}
 
-	try {
-		ref_t<task_t> task = proto.entry->get_task();
+	stat.send_tstate().set(send::run);
 
-		if(task->active()) {
-			{
-				bq_cond_guard_t guard(in_cond);
+	ref_t<task_t> task = proto.entry->get_task();
 
-				queue.insert(task);
-
-				in_cond.send();
-			}
-
-			out.ctl(1);
-			task->print(out);
-			out.flush_all();
-			out.ctl(0);
-		}
-		else {
-			proto.entry->derank_instance(this);
-		}
-	}
-	catch(exception_sys_t const &ex) {
+	if(task->active()) {
 		{
-			bq_cond_guard_t guard(in_cond);
-			if(work) {
-				work = false;
-				in_cond.send();
-			}
+			bq_cond_t::handler_t handler(in_cond);
+
+			queue.insert(task);
+
+			handler.send();
 		}
 
-		if(ex.errno_val == ECANCELED)
-			throw;
-
-		ex.log();
+		out.ctl(1);
+		task->print(out);
+		out.flush_all();
+		out.ctl(0);
 	}
-
-	return work;
+	else {
+		proto.entry->derank_instance(this);
+	}
 }
 
-bool instance_t::do_recv(in_t::ptr_t &ptr) {
+void instance_t::do_recv(in_t::ptr_t &ptr) {
+	stat.recv_tstate().set(recv::idle);
+
 	ref_t<task_t> task = ({
-		bq_cond_guard_t guard(in_cond);
+		bq_cond_t::handler_t handler(in_cond);
 
 		while(true) {
 			if(!work)
-				return false;
+				return;
 
 			if(queue.get_count())
 				break;
 
-			if(!bq_success(in_cond.wait(NULL)))
-				throw exception_sys_t(log::error, errno, "in_cond.wait: %m");
+			handler.wait();
 		}
 
 		queue.remove();
 	});
 
+	stat.recv_tstate().set(recv::run);
+
 	try {
 		if(!task->parse(ptr)) { work = false; }
 
+		++stat.tcount();
+
 		task->set_ready();
 	}
-	catch(exception_t const &ex) {
-		{
-			bq_cond_guard_t guard(out_cond);
-			if(work) {
-				work = false;
-				out_cond.send();
-			}
-		}
-
+	catch(...) {
 		task->clear();
-
-		ex.log();
-
 		proto.entry->put_task(task);
+
+		throw;
 	}
 
 	proto.entry->derank_instance(this);
-
-	return work;
 }
 
-void instance_t::do_cancel() {
-	while(true) {
-		ref_t<task_t> task = ({
-			bq_cond_guard_t guard(in_cond);
-			if(!queue.get_count())
-				break;
-
-			queue.remove();
-		});
-
-		if(task->active())
-			proto.entry->put_task(task);
-	}
-	rank = 0;
-	pending = 0;
-}
-
-void instance_t::recv_exit_send() {
-	bq_cond_guard_t guard(recv_exit_cond);
-	recv = false;
-	recv_exit_cond.send();
-}
-
-void instance_t::recv_exit_wait() {
-	bq_cond_guard_t guard(recv_exit_cond);
-	while(recv)
-		if(!bq_success(recv_exit_cond.wait(NULL))) {
-			// We should recevie recv_exit_cond signal at last
-			// even if bq_thr doesn't work more
-
-			if(errno == ECANCELED)
-				continue;
-
-			throw exception_sys_t(log::error, errno, "recv_exit_cond.wait: %m");
-		}
-}
+template<typename c_t>
+struct cleanup_t {
+	c_t const &c;
+	inline cleanup_t(c_t const &_c) : c(_c) { }
+	inline ~cleanup_t() { c(); }
+};
 
 void instance_t::recv_proc(bq_conn_t &conn) {
-	struct exit_guard_t {
-		instance_t &instance;
+	auto cleanup_f = [this]() -> void {
+		bq_cond_t::handler_t handler(out_cond);
+		work = false;
+		recv = false;
+		handler.send();
+	};
 
-		inline exit_guard_t(instance_t &_instance) throw() :
-			instance(_instance) { }
+	cleanup_t<typeof(cleanup_f)> cleanup(cleanup_f);
 
-		inline ~exit_guard_t() throw() { instance.recv_exit_send(); }
-	} exit_guard(*this);
-
-	bq_in_t in(conn, proto.prms.ibuf_size, proto.prms.in_timeout);
+	bq_in_t in(conn, proto.prms.ibuf_size, &stat.icount());
 	in_t::ptr_t ptr(in);
 
-	while(do_recv(ptr)) {
-		in.timeout_reset();
+	while(work) {
+		in.timeout_set(proto.prms.in_timeout);
+		do_recv(ptr);
 		in.truncate(ptr);
 	}
 }
 
+static string_t const recv_label = STRING("recv");
+static string_t const send_label = STRING("send");
+
 void instance_t::proc(bq_conn_t &conn) {
 	assert(proto.entry);
+
+	++stat.conns();
 
 	work = true;
 	recv = true;
 
-	bq_job_t<typeof(&instance_t::recv_proc)>::create(
-		log::handler_t::get_label(), bq_thr_get(),
-		*this, &instance_t::recv_proc, conn
-	);
-
 	{
-		struct instance_guard_t {
-			entry_t &entry;
-			instance_t &instance;
-
-			inline instance_guard_t(entry_t &_entry, instance_t &_instance) throw() :
-				entry(_entry), instance(_instance) {
-
-				entry.insert_instance(&instance);
-			}
-
-			inline ~instance_guard_t() throw() {
-				entry.remove_instance(&instance);
-			}
-
-		} instance_guard(*proto.entry, *this);
-
-		char obuf[proto.prms.obuf_size];
-		bq_out_t out(conn, obuf, sizeof(obuf), proto.prms.out_timeout);
-
-		while(do_send(out))
-			out.timeout_reset();
-
-		recv_exit_wait();
+		log::handler_t handler(recv_label);
+		bq_job(&instance_t::recv_proc)(*this, conn)->run(bq_thr_get());
 	}
 
-	do_cancel();
+	proto.entry->insert_instance(this);
+
+	auto cleanup_f = [this]() -> void {
+		{
+			bq_cond_t::handler_t handler(in_cond);
+			work = false;
+			handler.send();
+		}
+
+		{
+			bq_cond_t::handler_t handler(out_cond);
+
+			// We should wait the end of the recv_proc here
+			// even if bq_thr doesn't work more
+
+			// FIXME: deadlock on shutdown rare possible here
+
+			while(recv) {
+				try { handler.wait(); } catch(...) { }
+			}
+		}
+
+		proto.entry->remove_instance(this);
+
+		while(true) {
+			ref_t<task_t> task = ({
+				bq_cond_t::guard_t guard(in_cond);
+				if(!queue.get_count())
+					break;
+
+				queue.remove();
+			});
+
+			if(task->active())
+				proto.entry->put_task(task);
+		}
+		trank = 0;
+		pending = 0;
+
+		stat.send_tstate().set(send::connect);
+	};
+
+	cleanup_t<typeof(cleanup_f)> cleanup(cleanup_f);
+
+	log::handler_t handler(send_label);
+
+	char obuf[proto.prms.obuf_size];
+	bq_out_t out(conn, obuf, sizeof(obuf), &stat.ocount());
+
+	while(work) {
+		out.timeout_set(proto.prms.out_timeout);
+		do_send(out);
+	}
 }
+
+void instance_t::init() { stat.init(); }
+
+void instance_t::stat_print() { stat.print(); }
 
 instance_t::~instance_t() throw() { }
 

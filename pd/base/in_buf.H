@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -34,15 +34,14 @@ protected:
 
 	~in_buf_t() throw();
 
+	in_buf_t(in_buf_t const &) = delete;
+	in_buf_t &operator=(in_buf_t const &) = delete;
+
 protected:
 	inline log::level_t get_log_level() const { return log_level; }
 
 public:
 	bool truncate(ptr_t &ptr);
-
-private: // don't use
-	in_buf_t(in_buf_t const &);
-	in_buf_t &operator=(in_buf_t const &);
 };
 
 } // namespace pd

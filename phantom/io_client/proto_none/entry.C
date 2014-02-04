@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_none module.
-// Copyright (C) 2010-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2010-2012, YANDEX LLC.
+// Copyright (C) 2010-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2010-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -8,6 +8,7 @@
 #include "instance.I"
 
 #include <pd/base/exception.H>
+#include <pd/base/random.H>
 
 namespace phantom { namespace io_client { namespace proto_none {
 
@@ -46,6 +47,8 @@ void entry_t::tasks_t::place(ref_t<task_t> const &task, size_t i, bool flag) {
 }
 
 bool entry_t::tasks_t::insert(ref_t<task_t> const &task) {
+	mutex_guard_t guard(mutex);
+
 	if(count && !tasks[0]->active()) {
 		place(task, 1, true);
 		return false;
@@ -54,8 +57,6 @@ bool entry_t::tasks_t::insert(ref_t<task_t> const &task) {
 		if(count >= maxcount) {
 			maxcount *= 2;
 			if(maxcount < 128) maxcount = 128;
-
-			// FIXME: realloc under spinlock
 
 			ref_t<task_t> *_tasks = new ref_t<task_t>[maxcount];
 
@@ -70,11 +71,16 @@ bool entry_t::tasks_t::insert(ref_t<task_t> const &task) {
 		}
 
 		place(task, ++count, false);
+
+		++stat.qcount();
+
 		return true;
 	}
 }
 
 ref_t<task_t> entry_t::tasks_t::remove() {
+	mutex_guard_t guard(mutex);
+
 	assert(count);
 
 	ref_t<task_t> res = tasks[0];
@@ -85,9 +91,11 @@ ref_t<task_t> entry_t::tasks_t::remove() {
 
 	tasks[count] = ref_t<task_t>();
 
+	--stat.qcount();
+	++stat.tcount();
+
 	return res;
 }
-
 
 void entry_t::instances_t::put(instance_t *instance, size_t ind) {
 	(instances[ind - 1] = instance)->ind = ind;
@@ -100,19 +108,29 @@ instance_t *entry_t::instances_t::get(size_t ind) const {
 	return instance;
 }
 
-bool entry_t::instances_t::hcmp(instance_t *instance1, instance_t *instance2) {
-	return instance1->rank <= instance2->rank;
+bool entry_t::instances_t::rand() {
+	if(!rand_cnt) {
+		rand_val = random_U();
+		rand_cnt = 31;
+	}
+
+	bool res = rand_val & 1;
+	rand_val >>= 1;
+	--rand_cnt;
+	return res;
 }
 
 void entry_t::instances_t::place(instance_t *instance, size_t i, bool flag) {
-	size_t j;
+	unsigned int rank = instance->rank();
 
 	assert(i > 0);
 
+	size_t j;
 	for(; (j = i / 2); i = j) {
 		instance_t *_instance = get(j);
+		unsigned int _rank = _instance->rank();
 
-		if(hcmp(_instance, instance)) break;
+		if(_rank <= rank) break;
 
 		put(_instance, i);
 
@@ -122,16 +140,19 @@ void entry_t::instances_t::place(instance_t *instance, size_t i, bool flag) {
 	if(flag) {
 		for(; (j = i * 2) <= count; i = j) {
 			instance_t *_instance = get(j);
+			unsigned int _rank = _instance->rank();
 
 			if(j < count) {
 				instance_t *__instance = get(j + 1);
-				if(!hcmp(_instance, __instance)) {
+				unsigned int __rank = __instance->rank();
+
+				if(__rank < _rank || (__rank == _rank && rand())) {
 					++j;
 					_instance = __instance;
 				}
 			}
 
-			if(hcmp(instance, _instance)) break;
+			if(rank <= _rank) break;
 
 			put(_instance, i);
 		}
@@ -139,7 +160,6 @@ void entry_t::instances_t::place(instance_t *instance, size_t i, bool flag) {
 
 	put(instance, i);
 }
-
 
 void entry_t::instances_t::insert(instance_t *instance) {
 	assert(instance->ind == 0);
@@ -159,39 +179,39 @@ void entry_t::instances_t::remove(instance_t *instance) {
 
 void entry_t::instances_t::dec_rank(instance_t *instance) {
 	assert(instance->ind > 0);
-	assert(instance->rank > 0);
+	assert(instance->trank > 0);
 
-	--instance->rank;
+	--instance->trank;
 	place(instance, instance->ind, true);
 }
 
 void entry_t::instances_t::inc_rank(instance_t *instance) {
 	assert(instance->ind > 0);
 
-	++instance->rank;
+	++instance->trank;
 	place(instance, instance->ind, true);
 }
 
 void entry_t::insert_instance(instance_t *instance) {
 	assert(instance->pending == 0);
-	assert(instance->rank == 0);
+	assert(instance->trank == 0);
 
-	bq_cond_guard_t guard(cond);
+	bq_cond_t::handler_t handler(cond);
 	instances.insert(instance);
-	cond.send();
+	handler.send();
 }
 
 void entry_t::remove_instance(instance_t *instance) {
-	bq_cond_guard_t guard(cond);
+	bq_cond_t::handler_t handler(cond);
 	instances.remove(instance);
 	pending += instance->pending;
-	cond.send();
+	handler.send();
 }
 
 void entry_t::derank_instance(instance_t *instance) {
-	bq_cond_guard_t guard(cond);
+	bq_cond_t::handler_t handler(cond);
 	instances.dec_rank(instance);
-	cond.send();
+	handler.send();
 }
 
 void entry_t::run() {
@@ -199,14 +219,13 @@ void entry_t::run() {
 		instance_t *best = NULL;
 
 		{
-			bq_cond_guard_t guard(cond);
+			bq_cond_t::handler_t handler(cond);
 
 			while(
 				!pending || instances.get_count() < quorum ||
-				(best = instances.head())->rank >= queue_size
+				(best = instances.head())->trank >= queue_size
 			)
-				if(!bq_success(cond.wait(NULL)))
-					throw exception_sys_t(log::error, errno, "in_cond.wait: %m");
+				handler.wait();
 
 			instances.inc_rank(best);
 			--pending;
@@ -216,7 +235,5 @@ void entry_t::run() {
 		}
 	}
 }
-
-void entry_t::stat(out_t &/*out*/, bool /*clear*/) { }
 
 }}} // namespace phantom::io_client::proto_none

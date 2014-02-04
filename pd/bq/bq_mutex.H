@@ -1,14 +1,14 @@
 // This file is part of the pd::bq library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
 #pragma once
 
-#include <pd/bq/bq.H>
+#include <pd/bq/bq_err.H>
 
-#include <pd/base/thr.H>
+#include <pd/base/spinlock.H>
 #include <pd/base/assert.H>
 
 #pragma GCC visibility push(default)
@@ -16,7 +16,7 @@
 namespace pd {
 
 class bq_mutex_t {
-	thr::spinlock_t spinlock;
+	spinlock_t spinlock;
 
 	bool state;
 
@@ -39,7 +39,7 @@ public:
 	friend class wait_item_t;
 };
 
-typedef thr::guard_t<bq_mutex_t> bq_mutex_guard_t;
+typedef lock_guard_t<bq_mutex_t> bq_mutex_guard_t;
 
 } // namespace pd
 

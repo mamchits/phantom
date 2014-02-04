@@ -1,6 +1,6 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -164,7 +164,7 @@ public:
 			rlimit_t const &rlim = rptr.val();
 			struct rlimit r;
 
-			r.rlim_cur = r.rlim_max = rlim.val < sizeval_unlimited ? (rlim_t)rlim.val : RLIM_INFINITY;
+			r.rlim_cur = r.rlim_max = rlim.val < sizeval::unlimited ? (rlim_t)rlim.val : RLIM_INFINITY;
 
 			if(setrlimit(rlim.id, &r) < 0)
 				throw exception_sys_t(log::error, errno, "setrlimit: %m");
@@ -303,18 +303,18 @@ typedef phantom::setup_caps_t::caps_t caps_t;
 
 template<>
 void helper_t<caps_t>::parse(in_t::ptr_t &ptr, caps_t &val) {
-	helper_t<list_t<capnum_t> >::parse(ptr, val);
+	helper_t<list_t<capnum_t>>::parse(ptr, val);
 	val.setup(ptr);
 }
 
 template<>
 void helper_t<caps_t>::print(out_t &out, int off, caps_t const &val) {
-	 helper_t<list_t<capnum_t> >::print(out, off, val);
+	 helper_t<list_t<capnum_t>>::print(out, off, val);
 }
 
 template<>
 void helper_t<caps_t>::syntax(out_t &out) {
-	helper_t<list_t<capnum_t> >::syntax(out);
+	helper_t<list_t<capnum_t>>::syntax(out);
 }
 
 }} // namespace pd::config

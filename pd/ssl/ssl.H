@@ -1,6 +1,6 @@
 // This file is part of the pd::ssl library.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -20,11 +20,10 @@ public:
 
 	~ssl_auth_t() throw();
 
-	friend class ssl_ctx_t;
+	ssl_auth_t(ssl_auth_t const &) = delete;
+	ssl_auth_t &operator=(ssl_auth_t const &) = delete;
 
-private: // don't use
-	ssl_auth_t(ssl_auth_t const &);
-	ssl_auth_t &operator=(ssl_auth_t const &);
+	friend class ssl_ctx_t;
 };
 
 class ssl_ctx_t {
@@ -36,9 +35,8 @@ public:
 
 	~ssl_ctx_t() throw();
 
-private: // don't use
-	ssl_ctx_t(ssl_ctx_t const &);
-	ssl_ctx_t &operator=(ssl_ctx_t const &);
+	ssl_ctx_t(ssl_ctx_t const &) = delete;
+	ssl_ctx_t &operator=(ssl_ctx_t const &) = delete;
 };
 
 } // namespace pd

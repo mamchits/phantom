@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -15,30 +15,84 @@
 namespace pd { namespace config {
 
 template<typename x_t>
-struct objptr_t {
+class objptr_t {
 	x_t *ptr;
+	string_t name;
 
-	inline objptr_t() throw() : ptr(NULL) { }
+public:
+	inline objptr_t() throw() : ptr(NULL), name() { }
 	inline ~objptr_t() throw() { }
 
 	operator x_t *() const { return ptr; }
 	x_t *operator ->() const { return ptr; }
+
+	friend class helper_t<objptr_t<x_t>>;
 };
 
 template<typename x_t>
-class obj_t : public named_list_item_t<obj_t<x_t> > {
-	x_t *obj;
+class obj_t {
+	class item_t : public list_item_t<item_t> {
+		using list_item_t<item_t>::next;
+
+		virtual x_t *get_item(string_t const &_name) const = 0;
+
+		x_t *get(string_t const &name) {
+			x_t *item = NULL;
+
+			if(this) {
+				item = get_item(name);
+				if(!item) item = next->get(name);
+			}
+
+			return item;
+		}
+
+	public:
+		inline item_t() throw() : list_item_t<item_t>(this, list) { }
+		inline ~item_t() throw() { }
+
+		friend class obj_t<x_t>;
+	};
 
 public:
-	inline obj_t(string_t const &name, x_t *_obj) :
-		named_list_item_t<obj_t<x_t> >(name, this), obj(_obj) { }
+	static inline x_t *get(string_t const &name) {
+		return list->get(name);
+	}
 
-	inline ~obj_t() throw() { }
+	static item_t *list;
+
+	class obj_item_t : public item_t {
+		string_t const name;
+		x_t *obj;
+
+		virtual x_t *get_item(string_t const &_name) const {
+			return string_t::cmp_eq<ident_t>(_name, name) ? obj : NULL;
+		}
+	public:
+		inline obj_item_t(string_t const &_name, x_t *_obj) throw() :
+			item_t(), name(_name), obj(_obj) { }
+
+		inline ~obj_item_t() throw() { }
+	};
+
+	template<typename y_t>
+	class cast_item_t : public item_t {
+
+		virtual x_t *get_item(string_t const &_name) const {
+			return obj_t<y_t>::get(_name);
+		}
+public:
+		inline cast_item_t() throw() : item_t() { }
+		inline ~cast_item_t() throw() { }
+	};
 
 	static string_t sname;
 
-	friend class helper_t<objptr_t<x_t> >;
+	friend class helper_t<objptr_t<x_t>>;
 };
+
+template<typename x_t>
+typename obj_t<x_t>::item_t *obj_t<x_t>::list = NULL;
 
 template<typename x_t>
 class obj_ref_t {
@@ -88,9 +142,9 @@ public:
 };
 
 template<typename x_t>
-class ctor_base_t : public named_list_item_t<ctor_base_t<x_t> > {
-	using named_list_item_t<ctor_base_t<x_t> >::list;
-	using named_list_item_t<ctor_base_t<x_t> >::next;
+class ctor_base_t : public named_list_item_t<ctor_base_t<x_t>> {
+	using named_list_item_t<ctor_base_t<x_t>>::list;
+	using named_list_item_t<ctor_base_t<x_t>>::next;
 
 protected:
 	inline ctor_base_t(string_t const &name) :
@@ -148,9 +202,8 @@ protected:
 public:
 	void parse(in_t::ptr_t &ptr);
 
-private: // don't use
-	void *operator new(size_t);
-	void operator delete(void *);
+	void *operator new(size_t) = delete;
+	void operator delete(void *) = delete;
 };
 
 template<typename val_t>
@@ -418,13 +471,24 @@ string_t config::obj_t<x_t::y_t>::sname = STRING("<" #x_t "::" #y_t "::name>"); 
 static config::binding_t<x_t::config_t>::type_t<x_t::y_t> \
 	config_binding_type_##y_t(STRING(#y_t), STRING("<" #x_t "::" #y_t "::object>"), &x_t::config_t::y_t##_ref)
 
-#define config_binding_parent(x_t, x_parent_t, n) \
-static config::binding_t<x_t::config_t>::parent_t<x_parent_t::config_t> \
-	config_binding_parent_##n
+#define config_binding_cast(x_t, x_parent_t) \
+static config::obj_t<x_parent_t>::cast_item_t<x_t> obj_cast_item_##x_parent_t
 
-#define config_binding_removed(x_t, name, message) \
+#define config_binding_parent(x_t, x_parent_t) \
+config_binding_cast(x_t, x_parent_t); \
+static config::binding_t<x_t::config_t>::parent_t<x_parent_t::config_t> \
+	config_binding_parent_##x_parent_t
+
+#define config_binding_removed_(x_t, config_t, name, message) \
 static config::binding_t<x_t::config_t>::removed_t \
 	config_binding_removed_##name(STRING(#name), message)
+
+#define config_binding_removed(x_t, name, message) \
+	config_binding_removed_(x_t, config_t, name, message)
+
+#define config_binding_removed_sub(x_t, pref, name, message) \
+	config_binding_removed_(x_t, pref##_config_t, name, message)
+
 
 template<typename x_t, typename real_x_t>
 class ctor_t : public ctor_base_t<x_t> {
@@ -438,8 +502,7 @@ class ctor_t : public ctor_base_t<x_t> {
 
 		config_t config;
 		real_x_t obj;
-		obj_t<x_t> obj_item;
-		obj_t<real_x_t> obj_item_real;
+		typename obj_t<real_x_t>::obj_item_t obj_item_real;
 
 		virtual void parse_content(in_t::ptr_t &ptr) {
 			binding_t<config_t>::parse(ptr, config);
@@ -463,14 +526,12 @@ class ctor_t : public ctor_base_t<x_t> {
 			obj_ref_t<x_t>::item_t(name, ctor_name, ref),
 			config(),
 			obj(name, parse_conf(ptr)),
-			obj_item(name, &obj),
 			obj_item_real(name, &obj) { }
 
 		virtual ~obj_item_t() throw() { }
 
-	private: // don't use
-		obj_item_t(obj_item_t const &);
-		obj_item_t &operator=(obj_item_t const &);
+		obj_item_t(obj_item_t const &) = delete;
+		obj_item_t &operator=(obj_item_t const &) = delete;
 	} *list;
 
 	virtual void syntax_object_item(out_t &out) const {
@@ -511,26 +572,25 @@ static config::ctor_t<x_t, real_x_t> config_ctor_##real_x_t(STRING(#real_x_t))
 static config::ctor_t<x_t, x_t> config_ctor_##x_t(STRING(#x_t))
 
 template<typename x_t>
-struct helper_t<objptr_t<x_t> > {
+struct helper_t<objptr_t<x_t>> {
 	static inline void parse(in_t::ptr_t &ptr, objptr_t<x_t> &val) {
 		string_t name = parse_name(ptr);
-		val.ptr = string_t::cmp_eq<ident_t>(name, CSTR("NULL"))
-			? NULL
-			: obj_t<x_t>::find(name, ptr).obj
-		;
+		if(string_t::cmp_eq<ident_t>(name, CSTR("NULL"))) {
+			val.ptr = NULL;
+			return;
+		}
+
+		x_t *x = obj_t<x_t>::get(name);
+		if(!x)
+			error(ptr, "name is not found");
+
+		val.ptr = x;
+		val.name = name;
 	}
 
 	static inline void print(out_t &out, int, objptr_t<x_t> const &val) {
-		if(val) {
-			for(obj_t<x_t> *item = obj_t<x_t>::list; item; item = item->next) {
-				if(val == item->obj) {
-					out(item->name);
-					return;
-				}
-			}
-
-			out(CSTR("<unknown object>"));
-		}
+		if(val)
+			out(val.name);
 		else
 			out(CSTR("NULL"));
 	}

@@ -1,3 +1,9 @@
+define GETWORDSIZE
+WORDSIZE = $(shell echo -e '#include <limits.h>\n__WORDSIZE' | cpp | tail -1)
+endef
+
+$(eval $(call GETWORDSIZE))
+
 # TEST dir,deps
 
 define TEST
@@ -18,7 +24,7 @@ test_ext_link.$(1) = $(3:%=-l%)
 endif
 
 $$(tests.$(1)): % : %.o lib/libpd-$(1).a $$(test_link.$(1))
-	$$(CXX) $(LFLAGS.$(@)) $$(<) lib/libpd-$(1).a $$(test_link.$(1)) $$(test_ext_link.$(1)) -ldl -lpthread -o $$(@)
+	$$(CXX) $$(LFLAGS.$$(@)) $$(<) lib/libpd-$(1).a $$(test_link.$(1)) $$(test_ext_link.$(1)) $$(LIBS.$$(@)) -ldl -lpthread -o $$(@)
 
 tmps_test += $$(test_objs.$(1))
 targets_test += $$(tests.$(1))
@@ -30,9 +36,6 @@ targets += $$(tests.$(1))
 
 test_res.$(1) = $$(tests.$(1):%=%.res)
 
-$$(test_res.$(1)): %.res : % %.pat
-	@($$(<) > $$(@) && diff -au $$(word 2,$$(^)) $$(@) >&2) || (rm $$(@) && false)
-
 targets += $$(test_res.$(1)) test_report.$(1)
 
 test_report.$(1): $$(test_res.$(1))
@@ -43,3 +46,10 @@ test_report.$(1): $$(test_res.$(1))
 endif
 
 endef
+
+%.res: % %.pat
+	@($(<) > $(@) && diff -au $(word 2,$(^)) $(@) >&2) || (rm $(@) && false)
+
+%.res: % %.pat.$(WORDSIZE)
+	@($(<) > $(@) && diff -au $(word 2,$(^)) $(@) >&2) || (rm $(@) && false)
+

@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -104,7 +104,7 @@ template<typename val_t>
 typename record_t<val_t>::item_t *record_t<val_t>::list = NULL;
 
 template<typename val_t>
-struct helper_t<record_t<val_t> > {
+struct helper_t<record_t<val_t>> {
 	static void parse(in_t::ptr_t &ptr, record_t<val_t> &val) {
 		val.block_t::parse(ptr);
 	}

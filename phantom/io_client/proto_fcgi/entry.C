@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_fcgi module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -8,6 +8,7 @@
 #include "instance.I"
 
 #include <pd/base/exception.H>
+#include <pd/base/random.H>
 #include <pd/base/size.H>
 
 namespace phantom { namespace io_client { namespace proto_fcgi {
@@ -23,19 +24,29 @@ instance_t *entry_t::instances_t::get(size_t ind) const {
 	return instance;
 }
 
-bool entry_t::instances_t::hcmp(instance_t *instance1, instance_t *instance2) {
-	return instance1->rank <= instance2->rank;
+bool entry_t::instances_t::rand() {
+	if(!rand_cnt) {
+		rand_val = random_U();
+		rand_cnt = 31;
+	}
+
+	bool res = rand_val & 1;
+	rand_val >>= 1;
+	--rand_cnt;
+	return res;
 }
 
 void entry_t::instances_t::place(instance_t *instance, size_t i, bool flag) {
-	size_t j;
+	unsigned int rank = instance->rank();
 
 	assert(i > 0);
 
+	size_t j;
 	for(; (j = i / 2); i = j) {
 		instance_t *_instance = get(j);
+		unsigned int _rank = _instance->rank();
 
-		if(hcmp(_instance, instance)) break;
+		if(_rank <= rank) break;
 
 		put(_instance, i);
 
@@ -45,16 +56,19 @@ void entry_t::instances_t::place(instance_t *instance, size_t i, bool flag) {
 	if(flag) {
 		for(; (j = i * 2) <= count; i = j) {
 			instance_t *_instance = get(j);
+			unsigned int _rank = _instance->rank();
 
 			if(j < count) {
 				instance_t *__instance = get(j + 1);
-				if(!hcmp(_instance, __instance)) {
+				unsigned int __rank = __instance->rank();
+
+				if(__rank < _rank || (__rank == _rank && rand())) {
 					++j;
 					_instance = __instance;
 				}
 			}
 
-			if(hcmp(instance, _instance)) break;
+			if(rank <= _rank) break;
 
 			put(_instance, i);
 		}
@@ -80,8 +94,8 @@ void entry_t::instances_t::remove(instance_t *instance) {
 }
 
 void entry_t::instances_t::dec_rank(instance_t *instance) {
-	assert(instance->rank > 0);
-	--instance->rank;
+	assert(instance->trank > 0);
+	--instance->trank;
 
 	if(instance->ind > 0)
 		place(instance, instance->ind, true);
@@ -90,7 +104,7 @@ void entry_t::instances_t::dec_rank(instance_t *instance) {
 void entry_t::instances_t::inc_rank(instance_t *instance) {
 	assert(instance->ind > 0);
 
-	++instance->rank;
+	++instance->trank;
 	place(instance, instance->ind, true);
 }
 
@@ -149,7 +163,7 @@ entry_t::content_t::content_t(in_segment_t const &stdout) :
 
 	in_t::ptr_t p = ptr;
 
-	http::limits_t limits(0, 16, 64 * sizeval_kilo, 0);
+	http::limits_t limits(0, 16, 64 * sizeval::kilo, 0);
 	http::eol_t eol('\r', '\n');
 	http::mime_header_t header;
 
@@ -170,8 +184,7 @@ entry_t::content_t::content_t(in_segment_t const &stdout) :
 		if(p < bound)
 			entity = in_segment_t(p, bound - p);
 	}
-	catch(exception_t const &ex) {
-		ex.log();
+	catch(exception_t const &) {
 		throw http::exception_t(http::code_502, "Bad Gateway");
 	}
 }
@@ -181,12 +194,12 @@ bool entry_t::proc(
 	interval_t *timeout, string_t const &root
 ) {
 	instance_t *instance = ({
-		thr::spinlock_guard_t guard(instances_spinlock);
+		spinlock_guard_t guard(instances_spinlock);
 		if(instances.get_count() < quorum)
 			return false;
 
 		instance_t *instance = instances.head();
-		if(instance->rank >= queue_size)
+		if(instance->trank >= queue_size)
 			return false;
 
 		instances.inc_rank(instance);
@@ -197,7 +210,7 @@ bool entry_t::proc(
 	bool res = false;
 
 	try {
-		log::handler_default_t log_handler(instance->name);
+		//log::handler_t handler(instance->name);
 
 		ref_t<task_t> task = instance->create_task(request, timeout, root);
 		if(task) {
@@ -222,13 +235,11 @@ bool entry_t::proc(
 	catch(...) { }
 
 	{
-		thr::spinlock_guard_t guard(instances_spinlock);
+		spinlock_guard_t guard(instances_spinlock);
 		instances.dec_rank(instance);
 	}
 
 	return res;
 }
-
-void entry_t::stat(out_t &/*out*/, bool /*clear*/) { }
 
 }}} // namespace phantom::io_client::proto_fcgi

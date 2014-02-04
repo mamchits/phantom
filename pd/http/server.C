@@ -1,6 +1,6 @@
 // This file is part of the pd::http library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -149,6 +149,9 @@ void remote_request_t::parse(in_t::ptr_t &ptr, limits_t const &limits) {
 			case 'P': case 'p':
 				if(ptr.match<lower_t>(CSTR("POST "))) method = method_post;
 				break;
+			case 'O': case 'o':
+				if(ptr.match<lower_t>(CSTR("OPTIONS "))) method = method_options;
+				break;
 		}
 
 		if(method == method_undefined) {
@@ -199,6 +202,8 @@ void remote_request_t::parse(in_t::ptr_t &ptr, limits_t const &limits) {
 			}
 		}
 
+		full_path = path_decode(uri_path);
+
 		eol_t eol;
 
 		switch(*ptr) {
@@ -231,8 +236,6 @@ void remote_request_t::parse(in_t::ptr_t &ptr, limits_t const &limits) {
 		}
 
 		header.parse(ptr, eol, limits);
-
-		full_path = path_decode(uri_path);
 
 		entity.parse(ptr, eol, header, limits, false);
 
@@ -421,7 +424,7 @@ string_t path_decode(in_segment_t const &uri_path) {
 		if(!c)
 			throw exception_t(code_404, "Zero in path");
 
-		if(c == '%')
+		if(c == '%' || c == '+')
 			goto long_path;
 
 		switch(state) {
@@ -470,6 +473,8 @@ long_path:
 
 			c = c1 * 16 + c0;
 		}
+		else if(c == '+')
+			c = ' ';
 
 		if(!c)
 			throw exception_t(code_404, "Zero in path");

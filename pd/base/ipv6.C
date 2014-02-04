@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -22,26 +22,35 @@ template<>
 bool in_t::helper_t<address_ipv6_t>::parse(
 	ptr_t &ptr, address_ipv6_t &address, char const *, error_handler_t handler
 ) {
-	ptr_t p = ptr;
 	unsigned short digits[8];
 	int ind = 0;
 	int dcolon = 8;
 
-	for(ptr_t _p = p; _p; ++_p) {
-		char c = *_p;
+	{
+		ptr_t p = ptr;
 
-		if(c == '.') {
-			address_ipv4_t v4_addr;
-			if(!ptr.parse(v4_addr, handler))
-				return false;
+		p.match<lower_t>(CSTR("::ffff:"));
 
-			address = address_ipv6_t(ipv6_ipv4_map.prefix.value | v4_addr.value);
-			return true;
+		for(ptr_t _p = p; _p; ++_p) {
+			char c = *_p;
+
+			if(c == '.') {
+				address_ipv4_t v4_addr;
+
+				if(!p.parse(v4_addr, handler))
+					return false;
+
+				address = address_ipv6_t(ipv6_ipv4_map.prefix.value | v4_addr.value);
+
+				ptr = p;
+				return true;
+			}
+			else if(c < '0' || c > '9')
+				break;
 		}
-
-		if(c < '0' || c > '9')
-			break;
 	}
+
+	ptr_t p = ptr;
 
 	if(!p) {
 		if(handler) (*handler)(ptr, "address_ipv6 syntax error #0");

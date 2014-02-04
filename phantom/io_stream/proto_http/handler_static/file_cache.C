@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_static module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -42,7 +42,7 @@ file_t::file_t(string_t const &_sys_name_z, timeval_t curtime) throw() :
 		ino = st.st_ino;
 		size = st.st_size;
 		mtime_string = http::time_string(
-			mtime = timeval_unix_origin + st.st_mtime * interval_second
+			mtime = timeval::unix_origin + st.st_mtime * interval::second
 		);
 	}
 
@@ -53,7 +53,7 @@ file_t::~file_t() throw() { if(fd >= 0) ::close(fd); }
 
 void check(ref_t<file_t> &file_ref, interval_t const &check_time) {
 	file_t *file = file_ref;
-	timeval_t time = timeval_current();
+	timeval_t time = timeval::current();
 
 	if(time > file->check_time + check_time) {
 		struct stat st;
@@ -66,7 +66,7 @@ void check(ref_t<file_t> &file_ref, interval_t const &check_time) {
 			file_ref = file = new file_t(file->sys_name_z, time);
 		}
 		else if(stat_res) {
-			timeval_t mtime = timeval_unix_origin + st.st_mtime * interval_second;
+			timeval_t mtime = timeval::unix_origin + st.st_mtime * interval::second;
 
 			if(st.st_size != file->size) {
 				log_error("File \"%s\" incorrectly changed", file->sys_name_z.ptr());
@@ -90,7 +90,7 @@ ref_t<file_t> file_cache_t::find(string_t const &path) {
 	bucket_t &bucket = buckets[path.fnv<ident_t>() % cache_size];
 
 	{
-		thr::mutex_guard_t guard(mutex);
+		mutex_guard_t guard(mutex);
 
 		node_t *node = bucket.list;
 

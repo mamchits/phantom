@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_proxy module.
-// Copyright (C) 2010-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2010-2012, YANDEX LLC.
+// Copyright (C) 2010-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2010-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -39,8 +39,8 @@ public:
 
 		inline config_t() throw() :
 			handler_t::config_t(),
-			client_proto(), timeout(interval_second),
-			reply_limits(1024, 128, 8 * sizeval_kilo, 8 * sizeval_mega) { }
+			client_proto(), timeout(interval::second),
+			reply_limits(1024, 128, 8 * sizeval::kilo, 8 * sizeval::mega) { }
 
 		inline void check(in_t::ptr_t const &ptr) const {
 			handler_t::config_t::check(ptr);
@@ -65,7 +65,7 @@ config_binding_sname(handler_proxy_t);
 config_binding_value(handler_proxy_t, client_proto);
 config_binding_value(handler_proxy_t, timeout);
 config_binding_value(handler_proxy_t, reply_limits);
-config_binding_parent(handler_proxy_t, handler_t, 1);
+config_binding_parent(handler_proxy_t, handler_t);
 config_binding_ctor(handler_t, handler_proxy_t);
 } // handler_proxy
 
@@ -142,9 +142,13 @@ class handler_proxy_t::task_t : public io_client::proto_none::task_t {
 			case http::method_head: out(CSTR("HEAD ")); break;
 			case http::method_get: out(CSTR("GET ")); break;
 			case http::method_post: out(CSTR("POST ")); break;
+			case http::method_options: out(CSTR("OPTIONS ")); break;
 			case http::method_undefined: out(CSTR("UNDEFINED ")); break;
 		}
-		out(uri_path)(uri_args)(CSTR(" HTTP/1.1")).crlf();
+		out(uri_path);
+		if(uri_args) out('?')(uri_args);
+		out(CSTR(" HTTP/1.1")).crlf();
+
 		header.print(out);
 		if(need_host)
 			out(CSTR("Host: "))(host).crlf();

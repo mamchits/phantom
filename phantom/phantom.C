@@ -1,15 +1,17 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
 #include "setup.H"
 #include "io.H"
+#include "stat.H"
 #include "logger.H"
 #include "module.H"
 
 #include <pd/bq/bq_spec.H>
+#include <pd/bq/bq_thr.H>
 
 #include <pd/base/config_enum.H>
 #include <pd/base/config_struct.H>
@@ -29,12 +31,6 @@
 
 using namespace pd;
 
-enum time_format_t { brief = 0, full };
-
-config_enum_sname(time_format_t);
-config_enum_value(time_format_t, brief);
-config_enum_value(time_format_t, full);
-
 class phantom_t {
 public:
 	typedef phantom::obj_t obj_t;
@@ -42,22 +38,6 @@ public:
 	typedef phantom::io_t io_t;
 	typedef phantom::logger_t logger_t;
 	typedef phantom::setup_t setup_t;
-
-	struct stat_config_t {
-		config::enum_t<bool> clear;
-		config::enum_t<time_format_t> time_format;
-		interval_t period;
-		string_t filename;
-		config::list_t<obj_t *> list;
-
-		inline stat_config_t() throw() :
-			clear(false), time_format(brief), period(interval_zero),
-			filename(), list() { }
-
-		inline void check(in_t::ptr_t const &) const { }
-
-		inline ~stat_config_t() throw() { }
-	};
 
 	struct config_t {
 		config_binding_type_ref(setup_t);
@@ -67,30 +47,16 @@ public:
 
 		config::objptr_t<logger_t> logger;
 
-		config::struct_t<stat_config_t> stat;
-
-		inline config_t() : logger(), stat() { }
-
+		inline config_t() : logger() { }
 		inline ~config_t() { }
 
 		inline void check(in_t::ptr_t const &) const { }
-
-		void stat_print(out_t &out, bool force_total = false);
 	};
 
-	static void run(string_t const &name);
-	static void check(string_t const &name);
+	static int run(string_t const &name);
+	static int check(string_t const &name);
 	static void syntax();
 };
-
-namespace phantom_stat {
-config_binding_sname_sub(phantom_t, stat);
-config_binding_value_sub(phantom_t, stat, clear);
-config_binding_value_sub(phantom_t, stat, time_format);
-config_binding_value_sub(phantom_t, stat, period);
-config_binding_value_sub(phantom_t, stat, filename);
-config_binding_value_sub(phantom_t, stat, list);
-}
 
 namespace phantom {
 config_binding_sname(phantom_t);
@@ -99,75 +65,10 @@ config_binding_type(phantom_t, scheduler_t);
 config_binding_type(phantom_t, logger_t);
 config_binding_value(phantom_t, logger);
 config_binding_type(phantom_t, io_t);
-config_binding_value(phantom_t, stat);
+config_binding_removed(phantom_t, stat, "stat is obsoleted. Use io_monitor_t instead");
 }
 
-void phantom_t::config_t::stat_print(out_t &out, bool force_total) {
-	bool stat_clear = stat.clear && !force_total;
-
-	out(CSTR("time\t")).print(
-		timeval_current(), stat.time_format == full ? "+dz" : "+"
-	);
-
-	if(!stat_clear)
-		out(CSTR("\t(total)"));
-
-	out.lf();
-
-	for(typeof(stat.list.ptr()) ptr = stat.list; ptr; ++ptr) {
-		obj_t *obj = ptr.val();
-		out.lf()(CSTR("** "))(obj->name).lf();
-		obj->stat(out, stat_clear);
-		out.lf();
-	}
-
-/*
-	if(stat.system) {
-		bq_stack_pool_info_t info = bq_stack_pool_get_info();
-
-		out
-			.lf()
-			(CSTR("stack pool: "))
-			.print(info.wsize)('/')
-			.print(info.size).lf().lf()
-		;
-	}
- */
-}
-
-namespace phantom {
-
-bq_spec_decl(log::handler_t const, log_handler_current);
-
-class log_mgr_t {
-	static log_mgr_t const instance;
-
-	static inline log::handler_t const *&current() {
-		return log_handler_current;
-	}
-
-	static inline void set(log::handler_t const *log_handler) {
-		current() = log_handler;
-	}
-
-	static inline log::handler_t const *get() {
-		return current();
-	}
-
-	inline log_mgr_t() throw() {
-		log::handler_t::init(&set, &get);
-	}
-
-	inline ~log_mgr_t() throw() {
-		log::handler_t::init(NULL, NULL);
-	}
-};
-
-log_mgr_t const __init_priority(102) log_mgr_t::instance;
-
-} // namespace phantom
-
-void phantom_t::run(string_t const &conf_name) {
+int phantom_t::run(string_t const &conf_name) {
 	config_t config;
 	string_t const conf_str = string_file(conf_name.str());
 
@@ -179,7 +80,7 @@ void phantom_t::run(string_t const &conf_name) {
 	}
 	catch(config::exception_t const &ex) {
 		config::report_position(conf_name, conf_str, ex.ptr);
-		return;
+		return 1;
 	}
 
 	signal(SIGPIPE, SIG_IGN);
@@ -193,93 +94,41 @@ void phantom_t::run(string_t const &conf_name) {
 	sigaddset(&sigset, SIGQUIT);
 	sigprocmask(SIG_BLOCK, &sigset, NULL);
 
-	log::handler_default_t log_handler(STRING("phantom"), config.logger);
+	log::handler_t handler(STRING("phantom"), config.logger, true);
 
-	log_info("Start");
-
-	try {
-		int stat_fd;
-
-		if(config.stat.filename) {
-			string_t filename_z = ({
-				string_t::ctor_t ctor(config.stat.filename.size() + 1);
-				ctor(config.stat.filename)('\0');
-				(string_t)ctor;
-			});
-
-			stat_fd = ::open(filename_z.ptr(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-			if(stat_fd < 0)
-				throw exception_sys_t(
-					log::error, errno, "open (%s): %m", filename_z.ptr()
-				);
-		}
-		else {
-			stat_fd = ::dup(1);
-			if(stat_fd < 0)
-				throw exception_sys_t(log::error, errno, "dup: %m");
+	struct obj_guard_t {
+		inline obj_guard_t() {
+			log_info("Start");
+			phantom::obj_init();
 		}
 
-		fd_guard_t stat_fd_guard(stat_fd);
+		inline ~obj_guard_t() {
+			bq_thr_t::stop();
 
-		struct obj_guard_t {
-			inline obj_guard_t() { phantom::obj_init(); }
-
-			inline ~obj_guard_t() {
-				bq_thr_t::stop();
-
-				phantom::obj_fini();
-			}
-		};
-
-		obj_guard_t obj_guard;
-
-		bool need_stat = config.stat.list;
-		if(need_stat) {
-			interval_t period = config.stat.period;
-			if(period > interval_zero) {
-				time_t s = period / interval_second;
-				suseconds_t ms = (period % interval_second) / interval_microsecond;
-				itimerval it = { { s, ms }, { s, ms } };
-				setitimer(ITIMER_REAL, &it, NULL);
-			}
+			phantom::obj_fini();
+			log_info("Exit");
 		}
+	};
 
-		phantom::obj_exec();
+	obj_guard_t obj_guard;
 
-		for(bool work = true; work;) {
-			switch(({ int sig; sigwait(&sigset, &sig); sig; })) {
-				case SIGQUIT:
-				case SIGTERM:
-					work = false;
-				case SIGINT:
-				case SIGALRM:
-				if(need_stat) {
-					char obuf[1024];
-					out_fd_t out(obuf, sizeof(obuf), stat_fd);
+	phantom::obj_exec();
 
-					config.stat_print(out);
-				}
-			}
-		}
-
-		if(need_stat && config.stat.clear) {
-			char obuf[1024];
-			out_fd_t out(obuf, sizeof(obuf), 1);
-
-			config.stat_print(out, true);
+	for(bool work = true; work;) {
+		switch(({ int sig; sigwait(&sigset, &sig); sig; })) {
+			case SIGQUIT:
+			case SIGTERM:
+			case SIGINT:
+				work = false;
+			case SIGALRM:
+				;
 		}
 	}
-	catch(exception_t const &ex) {
-		ex.log();
-	}
-	catch(...) {
-		log_error("unknown exception");
-	}
 
-	log_info("Exit");
+	return 0;
 }
 
-void phantom_t::check(string_t const &conf_name) {
+int phantom_t::check(string_t const &conf_name) {
 	config::check = true;
 	config_t config;
 	string_t const conf_str = string_file(conf_name.str());
@@ -292,13 +141,15 @@ void phantom_t::check(string_t const &conf_name) {
 	}
 	catch(config::exception_t const &ex) {
 		config::report_position(conf_name, conf_str, ex.ptr);
-		return;
+		return 1;
 	}
 
 	char obuf[1024];
 	out_fd_t out(obuf, sizeof(obuf), 1);
 
 	config::binding_t<config_t>::print(out, 0, config);
+
+	return 0;
 }
 
 void phantom_t::syntax() {
@@ -434,7 +285,7 @@ static char const *usage_str =
 ;
 
 static void usage() {
-	size_t __attribute__((unused)) n = write(2, usage_str, strlen(usage_str));
+	size_t __attribute__((unused)) n = ::write(2, usage_str, strlen(usage_str));
 }
 
 extern "C" int main(int _argc, char *_argv[], char *_envp[]) {
@@ -468,6 +319,8 @@ extern "C" int main(int _argc, char *_argv[], char *_envp[]) {
 				module_load(_argv[i]);
 
 			phantom_t::syntax();
+
+			return 0;
 		}
 		else {
 			if(!_argc) {
@@ -477,13 +330,13 @@ extern "C" int main(int _argc, char *_argv[], char *_envp[]) {
 
 			string_t name = config::setup(_argc, _argv, _envp);
 
-			(mode == run ? phantom_t::run : phantom_t::check)(name);
+			return (mode == run ? phantom_t::run : phantom_t::check)(name);
 		}
-
-		return 0;
 	}
 	catch(exception_t const &ex) {
-		ex.log();
+	}
+	catch(string_t const &ex) {
+		log_error("%s", ex.ptr());
 	}
 	catch(...) {
 		log_error("unknown exception");

@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::ipv4 module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -78,7 +78,7 @@ namespace io_stream_ipv4 {
 config_binding_sname(io_stream_ipv4_t);
 config_binding_value(io_stream_ipv4_t, address);
 config_binding_value(io_stream_ipv4_t, port);
-config_binding_parent(io_stream_ipv4_t, io_stream_t, 1);
+config_binding_parent(io_stream_ipv4_t, io_stream_t);
 config_binding_value(io_stream_ipv4_t, defer_accept);
 config_binding_value(io_stream_ipv4_t, cork);
 config_binding_ctor(io_t, io_stream_ipv4_t);

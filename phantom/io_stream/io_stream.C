@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -9,12 +9,15 @@
 #include "proto.H"
 
 #include "../module.H"
+#include "../scheduler.H"
 
 #include <pd/bq/bq_job.H>
 #include <pd/bq/bq_util.H>
 #include <pd/bq/bq_in.H>
 #include <pd/bq/bq_out.H>
 #include <pd/bq/bq_conn_fd.H>
+#include <pd/base/stat.H>
+#include <pd/base/stat_items.H>
 
 #include <pd/base/exception.H>
 #include <pd/base/fd_guard.H>
@@ -23,33 +26,69 @@ namespace phantom {
 
 MODULE(io_stream);
 
+namespace io_stream {
+
+typedef stat::count_t conns_t;
+typedef stat::mmcount_t mmconns_t;
+typedef stat::count_t reqs_t;
+typedef stat::count_t icount_t;
+typedef stat::count_t ocount_t;
+
+typedef stat::items_t<
+	conns_t,
+	mmconns_t,
+	reqs_t,
+	icount_t,
+	ocount_t
+> stat_base_t;
+
+struct stat_t : stat_base_t {
+	inline stat_t() throw() : stat_base_t(
+		STRING("conns"),
+		STRING("mmconns"),
+		STRING("reqs"),
+		STRING("in"),
+		STRING("out")
+	) { }
+
+	inline ~stat_t() throw() { }
+
+	inline conns_t &conns() throw() { return item<0>(); }
+	inline mmconns_t &mmconns() throw() { return item<1>(); }
+	inline reqs_t &reqs() throw() { return item<2>(); }
+	inline icount_t &icount() throw() { return item<3>(); }
+	inline ocount_t &ocount() throw() { return item<4>(); }
+};
+
+} // namespae io_stream
+
 io_stream_t::config_t::config_t() throw() :
 	io_t::config_t(),
 	listen_backlog(20),
-	reuse_addr(false), ibuf_size(sizeval_kilo), obuf_size(4 * sizeval_kilo),
-	timeout(interval_minute), keepalive(interval_minute),
-	force_poll(interval_inf), transport(), proto(),
+	reuse_addr(false), ibuf_size(sizeval::kilo), obuf_size(4 * sizeval::kilo),
+	timeout(interval::minute), keepalive(interval::minute),
+	force_poll(interval::inf), transport(), proto(),
 	multiaccept(false), aux_scheduler(), remote_errors(log::error) { }
 
 void io_stream_t::config_t::check(in_t::ptr_t const &ptr) const {
 	io_t::config_t::check(ptr);
 
-	if(listen_backlog > 128 * sizeval_kilo)
+	if(listen_backlog > 128 * sizeval::kilo)
 		config::error(ptr, "listen_backlog is too big");
 
-	if(ibuf_size > sizeval_mega)
+	if(ibuf_size > sizeval::mega)
 		config::error(ptr, "ibuf_size is too big");
 
-	if(ibuf_size < sizeval_kilo)
+	if(ibuf_size < sizeval::kilo)
 		config::error(ptr, "ibuf_size is too small");
 
-	if(obuf_size > sizeval_mega)
+	if(obuf_size > sizeval::mega)
 		config::error(ptr, "obuf_size is too big");
 
-	if(obuf_size < sizeval_kilo)
+	if(obuf_size < sizeval::kilo)
 		config::error(ptr, "obuf_size is too small");
 
-	if(timeout > interval_hour)
+	if(timeout > interval::hour)
 		config::error(ptr, "timeout is too big");
 
 	if(!proto)
@@ -73,10 +112,11 @@ config_binding_value(io_stream_t, proto);
 config_binding_value(io_stream_t, multiaccept);
 config_binding_value(io_stream_t, aux_scheduler);
 config_binding_value(io_stream_t, remote_errors);
-config_binding_parent(io_stream_t, io_t, 1);
+config_binding_parent(io_stream_t, io_t);
 }
 
 namespace io_stream {
+
 class transport_default_t : public transport_t {
 	virtual bq_conn_t *new_connect(
 		int fd, fd_ctl_t const *_ctl, log::level_t remote_errors
@@ -94,6 +134,7 @@ bq_conn_t *transport_default_t::new_connect(
 }
 
 static transport_default_t const default_transport;
+
 } // namespace io_stream
 
 io_stream_t::io_stream_t(string_t const &name, config_t const &config) :
@@ -113,10 +154,10 @@ io_stream_t::io_stream_t(string_t const &name, config_t const &config) :
 		transport;
 	})),
 	proto(*config.proto), multiaccept(config.multiaccept),
-	aux_scheduler(config.aux_scheduler), remote_errors(config.remote_errors) {
-}
+	aux_scheduler(config.aux_scheduler), remote_errors(config.remote_errors),
+	stat(*new stat_t) { }
 
-io_stream_t::~io_stream_t() throw() { }
+io_stream_t::~io_stream_t() throw() { delete &stat; }
 
 void io_stream_t::init() {
 	netaddr_t const &netaddr = bind_addr();
@@ -147,6 +188,9 @@ void io_stream_t::init() {
 		fd = -1;
 		throw;
 	}
+
+	stat.init();
+	proto.init(name);
 }
 
 void io_stream_t::conn_proc(int fd, netaddr_t *netaddr) const {
@@ -165,32 +209,44 @@ void io_stream_t::conn_proc(int fd, netaddr_t *netaddr) const {
 
 	class conn_guard_t {
 		bq_conn_t *conn;
+		io_stream::mmconns_t &mmconns;
 	public:
-		inline conn_guard_t(bq_conn_t *_conn) throw() : conn(_conn) { }
-		inline ~conn_guard_t() throw() { delete conn; }
-	} conn_guard(conn);
+		inline conn_guard_t(bq_conn_t *_conn, stat_t &stat) throw() :
+			conn(_conn), mmconns(stat.mmconns()) {
+
+			++mmconns;
+		}
+
+		inline ~conn_guard_t() throw() {
+			--mmconns;
+
+			delete conn;
+		}
+	} conn_guard(conn, stat);
 
 	conn->setup_accept();
 
 	netaddr_t const &local_addr = bind_addr();
 
-	bq_in_t in(*conn, ibuf_size, timeout);
+	bq_in_t in(*conn, ibuf_size, &stat.icount());
 
 	for(bool work = true; work;) {
 		{
 			char obuf[obuf_size];
-			bq_out_t out(*conn, obuf, sizeof(obuf), timeout);
+			bq_out_t out(*conn, obuf, sizeof(obuf), &stat.ocount());
 
 			in_t::ptr_t ptr(in);
 
 			do {
-				if(!proto.request_proc(ptr, out, local_addr, *netaddr)) {
-					work = false;
-					break;
-				}
+				in.timeout_set(timeout);
+				out.timeout_set(timeout);
 
-				in.timeout_reset();
-				out.timeout_reset();
+				work = proto.request_proc(ptr, out, local_addr, *netaddr);
+				++stat.reqs();
+
+				if(!work)
+					break;
+
 			} while(in.truncate(ptr));
 		}
 
@@ -207,13 +263,13 @@ void io_stream_t::conn_proc(int fd, netaddr_t *netaddr) const {
 
 void io_stream_t::loop(int afd, bool conswitch) const {
 	fd_guard_t fd_guard(afd);
-	timeval_t last_poll = timeval_current();
+	timeval_t last_poll = timeval::current();
 
 	while(true) {
 		bool poll_before = false;
 
 		if(force_poll.is_real()) {
-			timeval_t now = timeval_current();
+			timeval_t now = timeval::current();
 			if(now - last_poll > force_poll) {
 				poll_before = true;
 				last_poll = now;
@@ -230,28 +286,20 @@ void io_stream_t::loop(int afd, bool conswitch) const {
 		}
 
 		try {
-			string_t _name = string_t::ctor_t(name.size() + 1 + netaddr->print_len() + 1)
-				(name)('(').print(*netaddr)(')')
-			;
+			string_t _name = string_t::ctor_t(netaddr->print_len()).print(*netaddr);
 
-			bq_thr_t *bq_thr = aux_scheduler
+			++stat.conns();
+
+			bq_thr_t *thr = aux_scheduler
 				? aux_scheduler->bq_thr()
 				: (conswitch ? scheduler.bq_thr() : bq_thr_get())
 			;
-
-			// right syntax is:
-			// bq_job(_name, bq_thr, this)->conn_proc(nfd, netaddr);
-			// or may be
-			// bq_job(_name, bq_thr, conn_proc)(this, nfd, netaddr);
-
-			bq_job_t<typeof(&io_stream_t::conn_proc)>::create(
-				_name, bq_thr, *this, &io_stream_t::conn_proc, nfd, netaddr
-			);
+			log::handler_t handler(_name);
+			bq_job(&io_stream_t::conn_proc)(*this, nfd, netaddr)->run(thr);
 		}
 		catch(exception_t const &ex) {
 			::close(nfd);
 			delete netaddr;
-			ex.log();
 		}
 		catch(...) {
 			::close(nfd);
@@ -261,15 +309,18 @@ void io_stream_t::loop(int afd, bool conswitch) const {
 	}
 }
 
-void io_stream_t::run() {
+void io_stream_t::run() const {
+	proto.run(name);
+
 	if(multiaccept) {
 		size_t bq_n = scheduler.bq_n();
 
+		char const *fmt = log::number_fmt(bq_n);
+
 		for(size_t i = 0; i < bq_n; ++i) {
 			try {
-				string_t _name = string_t::ctor_t(name.size() + 1 + 3 + 1)
-					(name)('[').print(i)(']')
-				;
+				string_t _name = string_t::ctor_t(5).print(i, fmt);
+				log::handler_t handler(_name);
 
 				int _fd = ::dup(fd);
 				if(_fd < 0)
@@ -277,15 +328,11 @@ void io_stream_t::run() {
 
 				fd_guard_t _fd_guard(_fd);
 
-				bq_job_t<typeof(&io_stream_t::loop)>::create(
-					_name, scheduler.bq_thr(i), *this, &io_stream_t::loop, _fd, false
-				);
+				bq_job(&io_stream_t::loop)(*this, _fd, false)->run(scheduler.bq_thr(i));
 
 				_fd_guard.relax();
 			}
-			catch(exception_t const &ex) {
-				ex.log();
-			}
+			catch(exception_t const &) { }
 		}
 	}
 	else {
@@ -297,8 +344,9 @@ void io_stream_t::run() {
 	}
 }
 
-void io_stream_t::stat(out_t &out, bool clear) {
-	proto.stat(out, clear);
+void io_stream_t::stat_print() const {
+	stat.print();
+	proto.stat_print(name);
 }
 
 void io_stream_t::fini() {

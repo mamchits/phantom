@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -12,11 +12,11 @@
 namespace pd {
 
 static void construct_from_tm(timeval_t const &timeval, timestruct_t &ts) {
-	interval_t tvv = timeval - timeval_unix_origin;
+	interval_t tvv = timeval - timeval::unix_origin;
 
-	ts.microseconds = (tvv % interval_second) / interval_microsecond;
+	ts.microseconds = (tvv % interval::second) / interval::microsecond;
 
-	time_t unix_time = tvv / interval_second;
+	time_t unix_time = tvv / interval::second;
 
 	struct tm unix_tm;
 
@@ -36,7 +36,7 @@ static void construct_from_tm(timeval_t const &timeval, timestruct_t &ts) {
 	ts.year = 1899 + unix_tm.tm_year;
 }
 
-#define interval_400_years ((400 * 365 + 97) * interval_day)
+constexpr interval_t interval_400_years((400 * 365 + 97) * interval::day);
 
 timestruct_t::timestruct_t(timeval_t const &timeval, bool local) throw() {
 	if(local) {
@@ -46,18 +46,18 @@ timestruct_t::timestruct_t(timeval_t const &timeval, bool local) throw() {
 
 	tz_offset = 0;
 
-	interval_t tvv = timeval - timeval_epoch_origin;
+	interval_t tvv = timeval - timeval::epoch_origin;
 
 	int years_delta = 0;
 
-	if(tvv < interval_zero) {
+	if(tvv < interval::zero) {
 		years_delta = ((-tvv) / interval_400_years + 1) * 400;
 		tvv = interval_400_years - (-tvv) % interval_400_years;
 	}
 
-	microseconds = (tvv % interval_second) / interval_microsecond;
+	microseconds = (tvv % interval::second) / interval::microsecond;
 
-	int64_t tv = tvv / interval_second;
+	int64_t tv = tvv / interval::second;
 
 	unsigned int d = tv / (60 * 60 * 24);
 	unsigned int t = tv % (60 * 60 * 24);
@@ -131,7 +131,7 @@ bool timestruct_t::mk_timeval(timeval_t &tv) const throw() {
 
 	//if(year >= 292000) return false;
 
-	interval_t delta = interval_zero;
+	interval_t delta = interval::zero;
 
 	int _year = year;
 
@@ -154,13 +154,13 @@ bool timestruct_t::mk_timeval(timeval_t &tv) const throw() {
 
 	if(hour >= 24 || minute >= 60 || second >= 60) return false;
 
-	tv = timeval_epoch_origin +
-		res * interval_day +
-		hour * interval_hour +
-		minute * interval_minute +
-		second * interval_second +
-		microseconds * interval_microsecond -
-		tz_offset * interval_second -
+	tv = timeval::epoch_origin +
+		res * interval::day +
+		hour * interval::hour +
+		minute * interval::minute +
+		second * interval::second +
+		microseconds * interval::microsecond -
+		tz_offset * interval::second -
 		delta
 	;
 
@@ -233,11 +233,22 @@ void out_t::helper_t<timeval_t>::print(
 
 template<>
 void out_t::helper_t<interval_t>::print(
-	out_t &out, interval_t const &_i, char const *
+	out_t &out, interval_t const &_i, char const *fmt
 ) {
+	unsigned short int prec = 10;
+
+	if(fmt) {
+		if(*fmt == '.') {
+			prec = 0;
+			++fmt;
+			while(*fmt >= '0' && *fmt <= '9') (prec *= 10) += (*(fmt++) - '0');
+		}
+		if(!prec) prec = 10;
+	}
+
 	interval_t i = _i;
 
-	if(i < interval_zero) {
+	if(i < interval::zero) {
 		out('-');
 		i = -i;
 	}
@@ -245,37 +256,63 @@ void out_t::helper_t<interval_t>::print(
 	if(!i.is_real()) {
 		out(CSTR("inf"));
 	}
-	else if(i < interval_millisecond) {
+	else if(i < interval::millisecond) {
 		out('0');
 	}
 	else {
-		if(i >= interval_week) {
-			out.print((uint32_t)(i / interval_week))('w');
-			i %= interval_week;
+		bool flag = false;
+		if(i >= interval::week) {
+			out.print((uint32_t)(i / interval::week))('w');
+			i %= interval::week;
+
+			flag = true;
 		}
 
-		if(i >= interval_day) {
-			out.print((uint8_t)(i / interval_day))('d');
-			i %= interval_day;
+		if(flag && !--prec)
+			return;
+
+		if(i >= interval::day) {
+			out.print((uint8_t)(i / interval::day))('d');
+			i %= interval::day;
+
+			flag = true;
 		}
 
-		if(i >= interval_hour) {
-			out.print((uint8_t)(i / interval_hour))('h');
-			i %= interval_hour;
+		if(flag && !--prec)
+			return;
+
+		if(i >= interval::hour) {
+			out.print((uint8_t)(i / interval::hour))('h');
+			i %= interval::hour;
+
+			flag = true;
 		}
 
-		if(i >= interval_minute) {
-			out.print((uint8_t)(i / interval_minute))('m');
-			i %= interval_minute;
+		if(flag && !--prec)
+			return;
+
+		if(i >= interval::minute) {
+			out.print((uint8_t)(i / interval::minute))('m');
+			i %= interval::minute;
+
+			flag = true;
 		}
 
-		if(i >= interval_second) {
-			out.print((uint8_t)(i / interval_second))('s');
-			i %= interval_second;
+		if(flag && !--prec)
+			return;
+
+		if(i >= interval::second) {
+			out.print((uint8_t)(i / interval::second))('s');
+			i %= interval::second;
+
+			flag = true;
 		}
 
-		if(i >= interval_millisecond) {
-			unsigned short n = i / interval_millisecond;
+		if(flag && !--prec)
+			return;
+
+		if(i >= interval::millisecond) {
+			unsigned short n = i / interval::millisecond;
 			out('0' + n / 100); n %= 100;
 			out('0' + n / 10); n %= 10;
 			out('0' + n);
@@ -298,7 +335,7 @@ void helper_t<interval_t>::parse(in_t::ptr_t &ptr, interval_t &interval) {
 	// We dont parse negative intervals
 
 	if(p.match<ident_t>(CSTR("inf"))) {
-		interval = interval_inf;
+		interval = interval::inf;
 	}
 	else {
 		while(!term) {
@@ -319,32 +356,32 @@ void helper_t<interval_t>::parse(in_t::ptr_t &ptr, interval_t &interval) {
 
 			switch(p ? *p : '\0') {
 				case 's':
-					itmp = res * interval_second;
-					if(itmp / interval_second != res) goto over;
+					itmp = res * interval::second;
+					if(itmp / interval::second != res) goto over;
 					++p;
 					break;
 				case 'm':
-					itmp = res * interval_minute;
-					if(itmp / interval_minute != res) goto over;
+					itmp = res * interval::minute;
+					if(itmp / interval::minute != res) goto over;
 					++p;
 					break;
 				case 'h':
-					itmp = res * interval_hour;
-					if(itmp / interval_hour != res) goto over;
+					itmp = res * interval::hour;
+					if(itmp / interval::hour != res) goto over;
 					++p;
 					break;
 				case 'd':
-					itmp = res * interval_day;
-					if(itmp / interval_day != res) goto over;
+					itmp = res * interval::day;
+					if(itmp / interval::day != res) goto over;
 					++p;
 					break;
 				case 'w':
-					itmp = res * interval_week;
-					if(itmp / interval_week != res) goto over;
+					itmp = res * interval::week;
+					if(itmp / interval::week != res) goto over;
 					++p;
 					break;
 				default:;
-					itmp = res * interval_millisecond;
+					itmp = res * interval::millisecond;
 					term = true;
 			}
 			if(isum + itmp < isum) goto over;

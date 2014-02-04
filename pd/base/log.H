@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -33,6 +33,9 @@ protected:
 	inline backend_t() throw() { }
 	inline ~backend_t() throw() { }
 
+	backend_t(backend_t const &) = delete;
+	backend_t &operator=(backend_t const &) = delete;
+
 public:
 	virtual void commit(iovec const *iov, size_t count) const throw() = 0;
 
@@ -42,10 +45,6 @@ public:
 	}
 
 	virtual level_t level() const throw() = 0;
-
-private: // don't use
-	backend_t(backend_t const &);
-	backend_t &operator=(backend_t const &);
 };
 
 class aux_t {
@@ -55,43 +54,46 @@ public:
 	virtual ~aux_t() throw();
 };
 
-class handler_t {
-	handler_t const *prev;
+class handler_base_t {
+	handler_base_t *prev;
+	bool root;
 
 protected:
-	string_t const label;
-	backend_t const &backend;
+	string_t const _label;
+	backend_t const &_backend;
 
 public:
-	inline level_t level() const throw() { return backend.level(); }
+	inline level_t level() const throw() { return _backend.level(); }
+
+	size_t print_label(out_t *out, bool slash = false) const;
 
 	virtual void vput(
 		level_t level, aux_t const *aux, char const *format, va_list vargs
 	) const throw() = 0;
 
-	static void init(
-		void (*_set)(handler_t const *), handler_t const *(*_get)()
-	) throw();
+	typedef handler_base_t *&(*current_funct_t)();
 
-	static handler_t const *get() throw();
-	static void set(handler_t const *) throw();
+	static current_funct_t setup(current_funct_t _current_funct) throw();
+	static handler_base_t *&current() throw();
 
-	static backend_t const &get_backend() throw() {
-		return get()->backend;
-	}
+	static inline backend_t const &backend() throw() { return current()->_backend; }
+	static inline string_t const &label() throw() { return current()->_label; }
 
-	static string_t const &get_label() throw() {
-		return get()->label;
-	}
-
-	inline handler_t(string_t const &_label, backend_t const *_backend) throw() :
-		prev(get()), label(_label),
-		backend(_backend ? *_backend : prev->backend) { set(this); }
+	inline handler_base_t(
+		string_t const &__label, backend_t const *__backend, bool _root
+	) throw() :
+		prev(({
+			handler_base_t *&cur = current();
+			handler_base_t *res = cur;
+			cur = this;
+			res;
+		})), root(_root), _label(__label),
+		_backend(__backend ? *__backend : prev->_backend) { }
 
 	inline void __format(4) put(
 		level_t level, aux_t const *aux, char const *format, ...
-	) const throw() {
-		if(backend.level() > level)
+	) throw() {
+		if(_backend.level() > level)
 			return;
 
 		va_list args;
@@ -100,40 +102,46 @@ public:
 		va_end(args);
 	}
 
-	inline ~handler_t() throw() { set(prev); }
+	inline ~handler_base_t() throw() { current() = prev; }
 
-private: // don't use
-	void *operator new(size_t);
-	void operator delete(void *);
+	void *operator new(size_t) = delete;
+	void operator delete(void *) = delete;
 };
 
 #define log_put(lev, aux, format...) \
 	do { \
-		log::handler_t const *handler = log::handler_t::get(); \
+		::pd::log::handler_base_t *handler = ::pd::log::handler_t::current(); \
 		if(handler && handler->level() <= lev) \
 			handler->put(lev, aux, format); \
 	} while(0)
 
-#define log_debug(format...) log_put(log::debug, NULL, format)
-#define log_info(format...) log_put(log::info, NULL, format)
-#define log_warning(format...) log_put(log::warning, NULL, format)
-#define log_error(format...) log_put(log::error, NULL, format)
+#define log_debug(format...) log_put(::pd::log::debug, NULL, format)
+#define log_info(format...) log_put(::pd::log::info, NULL, format)
+#define log_warning(format...) log_put(::pd::log::warning, NULL, format)
+#define log_error(format...) log_put(::pd::log::error, NULL, format)
 
-class handler_default_t : public handler_t {
+inline char const *number_fmt(size_t cnt) {
+	switch(cnt) {
+		case 0 ... 10: return "01";
+		case 11 ... 100: return "02";
+		case 101 ... 1000: return "03";
+		case 1001 ... 10000: return "04";
+		case 10001 ... 100000: return "05";
+	}
+	return "06";
+}
+
+class handler_t : public handler_base_t {
 	virtual void vput(
 		level_t level, aux_t const *aux, char const *format, va_list vargs
 	) const throw();
 
 public:
-	inline handler_default_t(
-		string_t const &_label, backend_t const *_backend = NULL
-	) throw() : handler_t(_label, _backend) { }
+	inline handler_t(
+		string_t const &_label, backend_t const *_backend = NULL, bool root = false
+	) throw() : handler_base_t(_label, _backend, root) { }
 
-	inline ~handler_default_t() throw() { }
-
-private: // don't use
-	void *operator new(size_t);
-	void operator delete(void *);
+	inline ~handler_t() throw() { }
 };
 
 }} // namespace pd::log

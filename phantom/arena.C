@@ -1,6 +1,6 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -8,7 +8,10 @@
 
 #include "jemalloc/malloc_arena.h"
 
-#include <pd/base/thr.H>
+#include <pd/base/spinlock.H>
+#include <pd/base/exception.H>
+
+#include <malloc.h>
 
 namespace phantom {
 
@@ -17,11 +20,18 @@ class arena_t::impl_t {
 
 	arena_id_t arena_id;
 
-	static thr::spinlock_t lock;
+	static spinlock_t spinlock;
 	static impl_t *list;
 
 	inline impl_t() throw() : arena_id(arena_create()) { }
 	inline ~impl_t() throw() { }
+
+	inline void *operator new(size_t sz) {
+		void *ptr = ::malloc(sz);
+		if(!ptr)
+			throw pd::exception_sys_t(pd::log::error, ENOMEM, "malloc: %m");
+		return ptr;
+	}
 
 public:
 	inline arena_id_t id() { return arena_id; }
@@ -29,7 +39,7 @@ public:
 	static inline impl_t *get() {
 		impl_t *impl = ({
 			impl_t *res = NULL;
-			thr::spinlock_guard_t guard(lock);
+			spinlock_guard_t guard(spinlock);
 			if(list) {
 				res = list;
 				list = list->next;
@@ -41,14 +51,14 @@ public:
 	}
 
 	static inline void put(impl_t *impl) {
-		thr::spinlock_guard_t guard(lock);
+		spinlock_guard_t guard(spinlock);
 		impl->next = list;
 		list = impl;
 	}
 };
 
 arena_t::impl_t *arena_t::impl_t::list = NULL;
-thr::spinlock_t arena_t::impl_t::lock;
+spinlock_t arena_t::impl_t::spinlock;
 
 arena_t::arena_t() throw() : impl(impl_t::get()) { }
 

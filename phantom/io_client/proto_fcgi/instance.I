@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_fcgi module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -11,7 +11,7 @@
 
 namespace phantom { namespace io_client { namespace proto_fcgi {
 
-class instance_t : public proto_instance_t {
+class instance_t : public proto_t::instance_t {
 	typedef http::remote_request_t request_t;
 
 	proto_fcgi_t const &proto;
@@ -21,7 +21,7 @@ class instance_t : public proto_instance_t {
 	bq_mutex_guard_t out_guard;
 
 	class tasks_t {
-		thr::spinlock_t spinlock;
+		spinlock_t spinlock;
 		uint16_t const size;
 		ref_t<task_t> *tasks;
 		size_t tasks_count;
@@ -39,7 +39,7 @@ class instance_t : public proto_instance_t {
 		inline ref_t<task_t> create() {
 			task_t *task = new task_t();
 			{
-				thr::spinlock_guard_t guard(spinlock);
+				spinlock_guard_t guard(spinlock);
 				for(unsigned int _id = 1; _id < size; ++_id) {
 					if(!tasks[_id]) {
 						task->id = _id;
@@ -59,7 +59,7 @@ class instance_t : public proto_instance_t {
 				return ref_t<task_t>();
 
 			{
-				thr::spinlock_guard_t guard(spinlock);
+				spinlock_guard_t guard(spinlock);
 				return tasks[_id];
 			}
 		}
@@ -67,7 +67,7 @@ class instance_t : public proto_instance_t {
 		inline void remove(task_t *task) {
 			uint16_t _id = task->id;
 			if(_id < size) {
-				thr::spinlock_guard_t guard(spinlock);
+				spinlock_guard_t guard(spinlock);
 				if(tasks[_id]) {
 					--tasks_count;
 					tasks[_id] = NULL;
@@ -76,7 +76,7 @@ class instance_t : public proto_instance_t {
 		}
 
 		inline void cancel() {
-			thr::spinlock_guard_t guard(spinlock);
+			spinlock_guard_t guard(spinlock);
 			for(unsigned int _id = 0; _id < size; ++_id) {
 				if(tasks[_id]) {
 					tasks[_id]->cancel(0);
@@ -98,24 +98,27 @@ class instance_t : public proto_instance_t {
 	void do_abort(ref_t<task_t> task);
 
 public:
-	string_t const name;
-	unsigned int rank;
+	unsigned int trank;
 	size_t ind;
+
+	inline unsigned int rank() { return trank + drank; }
 
 	ref_t<task_t> create_task(
 		request_t const &request, interval_t *timeout, string_t const &root
 	);
 	void abort(task_t *task);
 
-	inline instance_t(proto_fcgi_t const &_proto, string_t const &_name) :
-		proto_instance_t(),
+	inline instance_t(proto_fcgi_t const &_proto, unsigned int _rank) :
+		proto_t::instance_t(_rank),
 		proto(_proto),
 		out_mutex(), pout(NULL), out_guard(out_mutex),
 		tasks(proto.prms.queue_size),
-		in_cond(), work(false), name(_name), rank(0), ind(0) { }
+		in_cond(), work(false), trank(0), ind(0) { }
 
 private:
+	virtual void init();
 	virtual void proc(bq_conn_t &conn);
+	virtual void stat_print();
 	virtual ~instance_t() throw();
 };
 

@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_fcgi module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -35,7 +35,7 @@ public:
 
 		inline config_t() throw() :
 			handler_t::config_t(),
-			timeout(interval_second), retries(3), root() { }
+			timeout(interval::second), retries(3), root() { }
 
 		inline void check(in_t::ptr_t const &ptr) const {
 			handler_t::config_t::check(ptr);
@@ -63,7 +63,7 @@ config_binding_value(handler_fcgi_t, client_proto);
 config_binding_value(handler_fcgi_t, timeout);
 config_binding_value(handler_fcgi_t, retries);
 config_binding_value(handler_fcgi_t, root);
-config_binding_parent(handler_fcgi_t, handler_t, 1);
+config_binding_parent(handler_fcgi_t, handler_t);
 config_binding_ctor(handler_t, handler_fcgi_t);
 }
 
@@ -79,7 +79,7 @@ void handler_fcgi_t::do_proc(request_t const &request, reply_t &reply) const {
 		if(++i == retries)
 			throw http::exception_t(http::code_504, "Gateway Time-out");
 
-		if(att_timeout > interval_zero)
+		if(att_timeout > interval::zero)
 			bq_sleep(&att_timeout);
 	}
 }

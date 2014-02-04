@@ -17,27 +17,15 @@
 #include <pd/bq/bq_thr.H>
 #include <pd/bq/bq_heap.H>
 
-#include <pd/base/thr.H>
 #include <pd/base/string.H>
 #include <pd/base/out_fd.H>
 
 #include "thr_signal.I"
+#include "thr_name.I"
 
 using namespace pd;
 
-class activate_t : public bq_cont_activate_t {
-	virtual void operator()(bq_heap_t::item_t *item, bq_err_t err) {
-		bq_cont_set_msg(item->cont, err);
-		bq_cont_activate(item->cont);
-	}
-public:
-	inline activate_t() throw() { }
-	inline ~activate_t() throw() { }
-};
-
-activate_t activate;
-
-thr::signal_t signal;
+signal_t signal;
 
 bq_thr_t bq_thr1, bq_thr2;
 
@@ -47,15 +35,15 @@ out_fd_t out(obuf, sizeof(obuf), 1);
 static void job(void *) {
 	int *errno_ptr1 = &errno;
 	pthread_t pthread1 = pthread_self();
-	string_t const &thr1_name = bq_thr_get()->name();
+	string_t const &thr1_name = thr_name();
 
-	interval_t t = interval_zero;
+	interval_t t = interval::zero;
 	if(bq_thr2.switch_to(t) != bq_ok)
 		fatal("can't switch");
 
 	int *errno_ptr2 = &errno;
 	pthread_t pthread2 = pthread_self();
-	string_t const &thr2_name = bq_thr_get()->name();
+	string_t const &thr2_name = thr_name();
 
 	if(errno_ptr1 == errno_ptr2) {
 		out
@@ -91,8 +79,8 @@ static void job(void *) {
 bq_cont_count_t cont_count(1);
 
 extern "C" int main() {
-	bq_thr1.init(STRING("thr1"), 10, interval_second, cont_count, activate);
-	bq_thr2.init(STRING("thr2"), 10, interval_second, cont_count, activate);
+	bq_thr1.init(10, interval::second, cont_count, STRING("thr1"));
+	bq_thr2.init(10, interval::second, cont_count, STRING("thr2"));
 
 	if(bq_cont_create(&bq_thr1, &job, NULL) != bq_ok)
 		fatal("can't create cont");

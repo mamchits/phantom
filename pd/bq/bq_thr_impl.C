@@ -1,6 +1,6 @@
 // This file is part of the pd::bq library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -8,45 +8,20 @@
 #include "bq_util.H"
 
 #include <pd/base/exception.H>
+#include <pd/base/thr.H>
 
 #include <unistd.h>
 #include <sys/epoll.h>
-#include <sys/syscall.h>
 
 namespace pd {
 
-struct bq_thr_t::impl_t::stat_t {
-	interval_t time_wait;
-	interval_t time_run;
-
-	inline stat_t() throw() :
-		time_wait(interval_zero), time_run(interval_zero) { }
-
-	inline ~stat_t() throw() { }
-
-	inline stat_t &operator+=(stat_t const &stat) throw() {
-		time_wait += stat.time_wait;
-		time_run += stat.time_run;
-
-		return *this;
-	}
-
-	inline void print(pid_t tid, out_t &out) {
-		out
-			(CSTR("thread ")).print(tid)
-			(CSTR(": wait: ")).print(time_wait)
-			(CSTR(", run: ")).print(time_run).lf()
-		;
-	}
-};
-
 bq_thr_t::impl_t::impl_t(
-	string_t const &_name, size_t _maxevs, interval_t _timeout,
-	bq_cont_count_t &_cont_count, bq_cont_activate_t &_activate
+	size_t _maxevs, interval_t _timeout, bq_cont_count_t &_cont_count,
+	bq_post_activate_t *_post_activate
 ) :
-	cont_count(_cont_count), activate(_activate), mutex(),
-	name(_name), thread(0), tid(0),
-	maxevs(_maxevs), timeout(_timeout), time(timeval_current()) {
+	cont_count(_cont_count), post_activate(_post_activate),
+	thread(0), tid(0),
+	maxevs(_maxevs), timeout(_timeout), stat(), entry() {
 
 	efd = epoll_create(maxevs);
 	if(efd < 0)
@@ -64,16 +39,6 @@ bq_thr_t::impl_t::impl_t(
 
 	if(epoll_ctl(efd, EPOLL_CTL_ADD, sig_fds[0], &ev) < 0)
 		throw exception_sys_t(log::error, errno, "bq_thr_t::impl_t::impl_t, epoll_ctl, add: %m");
-
-	stat = new stat_t;
-
-	try {
-		stat_sum = new stat_t;
-	}
-	catch(...) {
-		delete stat;
-		throw;
-	}
 }
 
 __thread bq_thr_t::impl_t *bq_thr_t::impl_t::current;
@@ -107,9 +72,6 @@ bq_thr_t::impl_t::~impl_t() throw() {
 
 	if(::close(sig_fds[1]) < 0)
 		log_error("bq_thr_t::impl_t::~impl_t, close (sig_fds[1]): %m");
-
-	delete stat_sum;
-	delete stat;
 }
 
 class poll_item_t : public bq_thr_t::impl_t::item_t {
@@ -123,7 +85,7 @@ public:
 	inline poll_item_t(
 		int _fd, short int &_events, interval_t *_timeout
 	) throw() :
-		item_t(_timeout), fd(_fd), events(_events) { }
+		item_t(_timeout, false), fd(_fd), events(_events) { }
 
 	inline ~poll_item_t() throw() { }
 
@@ -137,8 +99,10 @@ void poll_item_t::attach() throw() {
 
 	events = 0;
 
-	if(epoll_ctl(impl->efd, EPOLL_CTL_ADD, fd, &ev) < 0)
+	if(epoll_ctl(impl->efd, EPOLL_CTL_ADD, fd, &ev) < 0) {
 		log_error("poll_item_t::attach, epoll_ctl, add: %m");
+		fatal("impossible to continue");
+	}
 }
 
 void poll_item_t::detach() throw() {
@@ -146,8 +110,10 @@ void poll_item_t::detach() throw() {
 	ev.events = 0;
 	ev.data.ptr = NULL;
 
-	if(epoll_ctl(impl->efd, EPOLL_CTL_DEL, fd, &ev) < 0)
+	if(epoll_ctl(impl->efd, EPOLL_CTL_DEL, fd, &ev) < 0) {
 		log_error("poll_item_t::detach, epoll_ctl, del: %m");
+		fatal("impossible to continue");
+	}
 }
 
 bq_err_t bq_do_poll(
@@ -155,31 +121,75 @@ bq_err_t bq_do_poll(
 ) {
 	poll_item_t item(fd, events, timeout);
 
-	return item.suspend(false, where);
+	return item.suspend(where);
 }
 
 void bq_thr_t::impl_t::loop() {
-	tid = syscall(SYS_gettid);
+	tid = thr::id;
 	current = this;
+	thr::tstate = &stat.tstate();
 
 	epoll_event evs[maxevs];
+	int timeoit_msec = timeout / interval::millisecond;
 
-	while(work || bq_cont_count()) {
-		{
-			timeval_t _time = timeval_current();
-			{
-				mutex_guard_t guard(mutex);
-				stat->time_run += (_time - time);
+	struct heaps_t {
+		bq_heap_t common, ready;
+
+		inline heaps_t() : common(), ready() { }
+
+		inline void insert(bq_heap_t::item_t *item) {
+			bq_heap_t *heap = item->heap;
+			if(heap) {
+				if(item->ready) {
+					if(heap == &ready) return;
+				}
+				else {
+					if(heap == &common) return;
+				}
+
+				heap->remove(item);
 			}
-			time = _time;
+
+			(item->ready ? ready : common).insert(item);
 		}
 
-		int n = epoll_wait(efd, evs, maxevs, timeout / interval_millisecond);
+		inline void remove(bq_heap_t::item_t *item) {
+			bq_heap_t *heap = item->heap;
+			if(heap)
+				heap->remove(item);
+		}
+
+		inline bq_heap_t::item_t *head(timeval_t const &now, bool work) {
+			bq_heap_t::item_t *citem = common.head();
+			bq_heap_t::item_t *ritem = ready.head();
+
+			if(work) {
+				if(citem && citem->time_to >= now)
+					citem = NULL;
+
+				if(ritem) {
+					if(!citem || citem->time_to >= ritem->time_to)
+						return ritem;
+				}
+			}
+			else {
+				if(ritem)
+					return ritem;
+			}
+
+			return citem;
+		}
+	} heaps;
+
+	while(work || bq_cont_count()) {
+		int n = epoll_wait(efd, evs, maxevs, timeoit_msec);
 		if(n < 0) {
 			if(errno != EINTR)
 				throw exception_sys_t(log::error, errno, "bq_thr_t::impl_t::loop, epoll_wait: %m");
 			n = 0;
 		}
+
+		stat.tstate().set(thr::run);
 
 		for(int i = 0; i < n; ++i) {
 			void *ptr = evs[i].data.ptr;
@@ -188,7 +198,8 @@ void bq_thr_t::impl_t::loop() {
 
 				item->events = evs[i].events & ~(EPOLLET | EPOLLONESHOT);
 
-				set_ready(item);
+					// may be "item->ready = true; heaps.insert(item);"
+				entry.set_ready(item);
 			}
 			else {
 				char buf[1024];
@@ -199,81 +210,54 @@ void bq_thr_t::impl_t::loop() {
 			}
 		}
 
-		{
-			timeval_t _time = timeval_current();
-			{
-				mutex_guard_t guard(mutex);
-				stat->time_wait += (_time - time);
-			}
-			time = _time;
-		}
-
 		while(true) {
-			bq_heap_t::item_t *citem = NULL;
-			bq_heap_t::item_t *ritem = NULL;
-
-			{
-				mutex_guard_t guard(mutex);
-
-				citem = common.head();
-				ritem = ready.head();
-			}
-
 			bq_heap_t::item_t *item = NULL;
+			while((item = entry.remove()))
+				heaps.insert(item);
 
-			if(citem && (citem->time_to < time || !work)) {
-				if(ritem)
-					item = (citem->time_to < ritem->time_to) ? citem : ritem;
-				else
-					item = citem;
-			}
-			else {
-				if(ritem)
-					item = ritem;
-				else
-					break;
-			}
+			timeval_t time = timeval::current();
 
-			item->detach();
+			if(!(item = heaps.head(time, work)))
+				break;
 
-			bool ready = ({
-				mutex_guard_t guard(mutex);
-				remove(item);
-			});
+			heaps.remove(item);
 
-			if(ready) {
+			++stat.acts();
+
+			if(item->ready) {
 				if(item->timeout)
 					*item->timeout =
-						item->time_to > time ? item->time_to - time : interval_zero;
+						item->time_to > time ? item->time_to - time : interval::zero;
 
-				activate(item, bq_ok);
+				item->err = bq_ok;
 			}
 			else {
-				if(item->timeout) *item->timeout = interval_zero;
+				if(item->timeout) *item->timeout = interval::zero;
 
-				activate(item, work ? bq_timeout : bq_not_available);
+				item->err = work ? bq_timeout : bq_not_available;
 			}
+
+			bq_cont_activate(item->cont);
 		}
+
+		stat.tstate().set(thr::idle);
 	}
 
+	thr::tstate = NULL;
 	current = NULL;
+	tid = 0;
 }
 
-void bq_thr_t::impl_t::stat_print(out_t &out, bool clear) {
-	stat_t *stat_new = new stat_t;
+void bq_thr_t::impl_t::init(string_t const &tname) {
+	stat.init();
 
-	{
-		mutex_guard_t guard(mutex);
-		stat_t *stat_tmp = stat;
-		stat = stat_new;
-		stat_new = stat_tmp;
-	}
+	thread = job(&impl_t::loop)(*this)->run(tname);
+}
 
-	(*stat_sum) += *(stat_new);
-
-	(clear ? stat_new : stat_sum)->print(tid, out);
-
-	delete stat_new;
+void bq_thr_t::impl_t::fini() {
+	poke();
+	job_wait(thread);
+	thread = 0;
 }
 
 } // namespace pd

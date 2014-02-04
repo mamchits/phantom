@@ -16,7 +16,6 @@ FIXINC = -isystem . -isystem ./pd/fixinclude
 
 include opts.mk
 others_pd += opts.mk
-$(targets) $(tmps): opts.mk
 
 # ===
 

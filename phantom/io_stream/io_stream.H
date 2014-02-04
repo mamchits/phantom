@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -23,6 +23,7 @@ namespace io_stream {
 class transport_t;
 class proto_t;
 class acl_t;
+struct stat_t;
 }
 
 class io_stream_t : public io_t {
@@ -30,6 +31,7 @@ public:
 	typedef io_stream::transport_t transport_t;
 	typedef io_stream::proto_t proto_t;
 	typedef io_stream::acl_t acl_t;
+	typedef io_stream::stat_t stat_t;
 
 private:
 	virtual netaddr_t const &bind_addr() const throw() = 0;
@@ -50,9 +52,11 @@ private:
 	scheduler_t *aux_scheduler;
 	log::level_t remote_errors;
 
+	stat_t &stat;
+
 	virtual void init();
-	virtual void run();
-	virtual void stat(out_t &out, bool clear);
+	virtual void run() const;
+	virtual void stat_print() const;
 	virtual void fini();
 
 	void loop(int fd, bool conswitch) const;

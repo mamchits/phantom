@@ -1,6 +1,6 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -32,14 +32,15 @@ void module_load(char const *file_name) {
 			}
 		}
 */
-		class err_dtor_t {
-			char *err;
-		public:
-			inline err_dtor_t(char *_err) throw() : err(_err) { }
-			inline ~err_dtor_t() throw() { if(err) free(err); }
-		} err_dtor(err);
+		if(!err)
+			throw STRING("Unknown libdl error");
 
-		throw exception_log_t(log::error, "%s", err ?: "Unknown libdl error");
+		string_t::ctor_t error_z(strlen(err) + 1);
+		error_z(str_t(err, strlen(err)))('\0');
+
+		free(err);
+
+		throw string_t(error_z);
 	}
 }
 
@@ -63,7 +64,7 @@ public:
 		inline ~config_t() throw() { }
 
 		inline void check(in_t::ptr_t const &) const {
-			for(typeof(list.ptr()) lptr = list; lptr; ++lptr) {
+			for(typeof(list._ptr()) lptr = list; lptr; ++lptr) {
 				name_t const &name = lptr.val();
 
 				// #dir "/mod_" #name ".so\0"
@@ -77,8 +78,8 @@ public:
 				try {
 					module_load(fname_z.ptr());
 				}
-				catch(exception_t const &ex) {
-					config::error(name.ptr, ex.msg().ptr());
+				catch(string_t const &ex) {
+					config::error(name.ptr, ex.ptr());
 				}
 
 				module_info_t *module_info = module_info_t::lookup(name);

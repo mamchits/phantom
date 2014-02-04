@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -78,7 +78,18 @@ public:
 	inline static_page_t() : in_t::page_t() { }
 
 	virtual ~static_page_t() throw();
+
+
+	inline void *operator new(size_t size);
+	inline void operator delete(void *) { }
 };
+
+static char static_page_buf[sizeof(static_page_t)] __aligned(__alignof__(static_page_t));
+
+inline void *static_page_t::operator new(size_t size) {
+	assert(size == sizeof(static_page_t));
+	return static_page_buf;
+}
 
 bool static_page_t::chunk(size_t off, str_t &str) const {
 	str = str_t((char const *)NULL + off, (size_t)(-1) - off);
@@ -104,9 +115,9 @@ void string_t::ctor_t::flush() {
 	setup_out(_size, size);
 }
 
-ref_t<in_t::page_t> __init_priority(102) string_t::static_page_ref = new static_page_t;
+ref_t<in_t::page_t> __init_priority(101) string_t::static_page_ref = new static_page_t;
 
-string_t __init_priority(102) string_t::empty;
+string_t __init_priority(101) string_t::empty;
 
 template<>
 void out_t::helper_t<string_t>::print(

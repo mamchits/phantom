@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::ipv4 module.
-// Copyright (C) 2010-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2010-2012, YANDEX LLC.
+// Copyright (C) 2010-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2010-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -27,11 +27,11 @@ class link_ipv4_t : public link_t {
 
 public:
 	inline link_ipv4_t(
-		link_t *&list, string_t const &name,
-		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto,
+		unsigned int rank, interval_t _conn_timeout,
+		log::level_t _remote_errors, proto_t &_proto,
 		netaddr_ipv4_t const &_netaddr, bool cork
 	) :
-		link_t(list, name, _conn_timeout, _remote_errors, _proto),
+		link_t(rank, _conn_timeout, _remote_errors, _proto),
 		netaddr(_netaddr), ctl_tcp(cork) { }
 };
 
@@ -42,18 +42,16 @@ netaddr_t const &link_ipv4_t::remote_netaddr() const throw() { return netaddr; }
 link_ipv4_t::~link_ipv4_t() throw() { }
 
 class links_ipv4_t : public links_t {
-	size_t addrs_count;
-	netaddr_ipv4_t *addrs;
+	sarray1_t<netaddr_ipv4_t> addrs;
 	bool cork;
 
 	virtual void create(
-		link_t *&list, string_t const &client_name,
+		pool_t &pool,
 		interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 	) const;
 
 public:
 	struct config_t : links_t::config_t {
-
 		config::list_t<address_ipv4_t> addresses;
 		uint16_t port;
 		config::enum_t<bool> cork;
@@ -72,36 +70,44 @@ public:
 	};
 
 	inline links_ipv4_t(string_t const &name, config_t const &config) :
-		links_t(name, config), addrs_count(0), addrs(NULL), cork(config.cork) {
+		links_t(name, config),
+		addrs(
+			config.addresses,
+			[&config](address_ipv4_t const &addr) {
+				return netaddr_ipv4_t(addr, config.port);
+			}
+		),
+		cork(config.cork) { }
 
-		for(typeof(config.addresses.ptr()) ptr = config.addresses; ptr; ++ptr)
-			++addrs_count;
-
-		addrs = new netaddr_ipv4_t[addrs_count];
-		netaddr_ipv4_t *aptr = addrs;
-
-		for(typeof(config.addresses.ptr()) ptr = config.addresses; ptr; ++ptr)
-			*(aptr++) = netaddr_ipv4_t(ptr.val(), config.port);
-	}
-
-	inline ~links_ipv4_t() throw() { if(addrs) delete [] addrs; }
+	inline ~links_ipv4_t() throw() { }
 };
 
 void links_ipv4_t::create(
-	link_t *&list, string_t const &client_name,
+	pool_t &pool,
 	interval_t _conn_timeout, log::level_t _remote_errors, proto_t &_proto
 ) const {
-	for(size_t i = 0; i < addrs_count; ++i) {
+	char const *fmt = log::number_fmt(count);
+
+	string_t stags[count];
+
+	for(size_t j = 0; j < count; ++j)
+		stags[j] = string_t::ctor_t(5).print(j, fmt);
+
+	pool.setup(name, addrs.size);
+
+	for(size_t i = 0; i < addrs.size; ++i) {
+		pool_t::bucket_t &bucket = pool[i];
 		netaddr_ipv4_t const &addr = addrs[i];
-		size_t addr_len = addr.print_len();
 
-		for(size_t j = 0; j < count; ++j) {
-			string_t link_name = string_t::ctor_t(
-				client_name.size() + 1 + name.size() + 1 + addr_len + 1 + 6 + 1
-			)(client_name)('(')(name)(',').print(addr)(',').print(j)(')');
+		bucket.setup(addr, count);
 
-			new link_ipv4_t(list, link_name, _conn_timeout, _remote_errors, _proto, addr, cork);
-		}
+		for(size_t j = 0; j < count; ++j)
+			bucket[j].setup(
+				stags[j],
+				new link_ipv4_t(
+					rank, _conn_timeout, _remote_errors, _proto, addr, cork
+				)
+			);
 	}
 }
 
@@ -110,7 +116,7 @@ config_binding_sname(links_ipv4_t);
 config_binding_value(links_ipv4_t, addresses);
 config_binding_value(links_ipv4_t, port);
 config_binding_value(links_ipv4_t, cork);
-config_binding_parent(links_ipv4_t, links_t, 1);
+config_binding_parent(links_ipv4_t, links_t);
 config_binding_ctor(links_t, links_ipv4_t);
 }
 

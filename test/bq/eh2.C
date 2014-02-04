@@ -1,34 +1,21 @@
-#include <pd/bq/bq.H>
 #include <pd/bq/bq_heap.H>
 #include <pd/bq/bq_cond.H>
 #include <pd/bq/bq_util.H>
 
-#include <pd/base/thr.H>
 #include <pd/base/string.H>
 #include <pd/base/exception.H>
 #include <pd/base/out_fd.H>
 
 #include "thr_signal.I"
+#include "thr_name.I"
 
 #include <exception>
 
 using namespace pd;
 
-class activate_t : public bq_cont_activate_t {
-	virtual void operator()(bq_heap_t::item_t *item, bq_err_t err) {
-		bq_cont_set_msg(item->cont, err);
-		bq_cont_activate(item->cont);
-	}
-public:
-	inline activate_t() throw() { }
-	inline ~activate_t() throw() { }
-};
-
-activate_t activate;
-
 bq_thr_t bq_thr1, bq_thr2;
 
-static thr::signal_t signal;
+static signal_t signal;
 
 static bq_cont_t *cont;
 
@@ -43,12 +30,13 @@ struct a_t {
 		if(std::uncaught_exception())
 			out(CSTR("Ok 0")).lf().flush_all();
 
-		out(CSTR("+a "))(bq_thr_get()->name()).lf().flush_all();
+		out(CSTR("+a "))(thr_name()).lf().flush_all();
 
-		if(bq_cont_deactivate("", wait_ready) == (bq_err_t)355)
-			out(CSTR("Ok 4")).lf().flush_all();
+		bq_cont_deactivate("");
 
-		out(CSTR("-a "))(bq_thr_get()->name()).lf().flush_all();
+		out(CSTR("Ok 4")).lf().flush_all();
+
+		out(CSTR("-a "))(thr_name()).lf().flush_all();
 	}
 };
 
@@ -62,47 +50,45 @@ struct b_t {
 		if(std::uncaught_exception())
 			out(CSTR("Ok 2")).lf().flush_all();
 
-		out(CSTR("+b "))(bq_thr_get()->name()).lf().flush_all();
+		out(CSTR("+b "))(thr_name()).lf().flush_all();
 
-		interval_t t = interval_zero;
+		interval_t t = interval::zero;
 
 		if(bq_thr2.switch_to(t, true) == bq_ok)
 			out(CSTR("Ok 3")).lf().flush_all();
 
-		out(CSTR("-b "))(bq_thr_get()->name()).lf().flush_all();
+		out(CSTR("-b "))(thr_name()).lf().flush_all();
 
-		bq_cont_set_msg(cont, (bq_err_t)355);
 		bq_cont_activate(cont);
 	}
 };
 
-class signal_t {
+class bq_signal_t {
 	bq_cond_t cond;
 	size_t count;
 
 public:
-	inline signal_t(size_t _count) throw() : cond(), count(_count) { }
+	inline bq_signal_t(size_t _count) throw() : cond(), count(_count) { }
 
-	inline ~signal_t() throw() { }
+	inline ~bq_signal_t() throw() { }
 
 	inline void wait() {
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 
 		while(count)
-			if(!bq_success(cond.wait(NULL)))
-				throw exception_sys_t(log::error, errno, "cond.wait: %m");
+			handler.wait();
 	}
 
 	inline void send() {
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 
 		if(!--count)
-			cond.send();
+			handler.send();
 	}
 };
 
 
-signal_t bq_signal(2);
+bq_signal_t bq_signal(2);
 
 static void job1(void *) {
 	try {
@@ -139,8 +125,8 @@ static void job(void *) {
 bq_cont_count_t cont_count(3);
 
 extern "C" int main() {
-	bq_thr1.init(STRING("thr1"), 1, interval_millisecond, cont_count, activate);
-	bq_thr2.init(STRING("thr2"), 1, interval_millisecond, cont_count, activate);
+	bq_thr1.init(1, interval::millisecond, cont_count, STRING("thr1"));
+	bq_thr2.init(1, interval::millisecond, cont_count, STRING("thr2"));
 
 	bq_cont_create(&bq_thr1, &job, NULL);
 	signal.wait();

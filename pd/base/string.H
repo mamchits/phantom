@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -91,6 +91,15 @@ public:
 			__check();
 	}
 
+	inline string_t &operator=(in_segment_t const &in_segment) {
+		if(&in_segment != this) {
+			in_segment_t::operator=(in_segment);
+			if(size())
+				__check();
+		}
+		return *this;
+	}
+
 	inline string_t(ptr_t &ptr, size_t len) : in_segment_t(ptr, len) {
 		if(size())
 			__check();
@@ -153,17 +162,17 @@ inline string_t string(str_t str) { return string_t::ctor_t(str.size())(str); }
 
 #define STRING(s) \
 	(__builtin_constant_p(s) \
-		? string_t( \
+		? ::pd::string_t( \
 			(s) - (char const *)NULL, \
 			(s) - (char const *)NULL + sizeof(s) - 1, \
-			string_t::static_page_ref \
+			::pd::string_t::static_page_ref \
 		) \
-		: string_t::illegal)
+		: ::pd::string_t::illegal)
 
 #define MKCSTR(_var, _string) \
 	char _var[(_string).size() + 1]; \
 	{ \
-		out_t(_var, sizeof(_var))((_string))('\0'); \
+		::pd::out_t(_var, sizeof(_var))((_string))('\0'); \
 	}
 
 } // namespace pd

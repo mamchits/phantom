@@ -1,6 +1,6 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -9,18 +9,19 @@
 #include <phantom/io.H>
 
 #include <pd/base/time.H>
-#include <pd/base/log_file_handler.H>
+#include <pd/base/log_file.H>
 
 #pragma GCC visibility push(default)
 
 namespace phantom {
 
-class io_logger_file_t : public io_t, public log_file_handler_t {
+class io_logger_file_t : public io_t, public log_file_t {
 	interval_t check_interval;
 
+protected:
 	virtual void init();
-	virtual void run();
-	virtual void stat(out_t &out, bool clear);
+	virtual void run() const;
+	virtual void stat_print() const;
 	virtual void fini();
 
 public:
@@ -30,7 +31,7 @@ public:
 		string_t header; // handler for dirty hacks.
 
 		inline config_t() throw() :
-			io_t::config_t(), filename(), check_interval(interval_second),
+			io_t::config_t(), filename(), check_interval(interval::second),
 			header() { }
 
 		inline ~config_t() throw() { }
@@ -47,7 +48,7 @@ public:
 		string_t const &name, config_t const &config
 	) :
 		io_t(name, config),
-		log_file_handler_t(config.filename, config.header),
+		log_file_t(config.filename, config.header),
 		check_interval(config.check_interval) {
 	}
 

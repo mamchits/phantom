@@ -1,6 +1,6 @@
 // This file is part of the pd::http library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -19,7 +19,8 @@ enum method_t {
 	method_undefined = 0,
 	method_head,
 	method_get,
-	method_post
+	method_post,
+	method_options,
 };
 
 enum version_t {
@@ -89,11 +90,13 @@ class exception_t : public pd::exception_t {
 
 public:
 	inline exception_t(code_t __code, char const *__msg) throw() :
-		pd::exception_t(), _code(__code), _msg(__msg) { }
+		pd::exception_t(), _code(__code), _msg(__msg) {
+
+		log_put(log::error, NULL, "%u %s", _code, _msg);
+	}
 
 	inline code_t code() const throw() { return _code; }
 
-	virtual void log() const;
 	virtual str_t msg() const;
 	virtual ~exception_t() throw();
 };

@@ -16,6 +16,8 @@ static address_ipv6_t parse_adress(string_t const &str) {
 	in_t::ptr_t p(str);
 	address_ipv6_t addr;
 	p.parse(addr, error);
+	if(p)
+		error(p, "junk at the end");
 	return addr;
 }
 
@@ -31,15 +33,14 @@ static void parse_address_test(string_t const &str) {
 	catch(char const *estr) {
 		out(CSTR("*** "))('\"')(str)('\"')(' ')(str_t(estr, strlen(estr))).lf();
 	}
-	catch(exception_t const &ex) {
-		out(CSTR("--- "))('\"')(str)('\"')(' ')(ex.msg()).lf();
-	}
 }
 
 static network_ipv6_t parse_network(string_t const &str) {
 	in_t::ptr_t p(str);
 	network_ipv6_t net;
 	p.parse(net, error);
+	if(p)
+		error(p, "junk at the end");
 	return net;
 }
 
@@ -54,9 +55,6 @@ static void parse_network_test(string_t const &str) {
 	}
 	catch(char const *estr) {
 		out(CSTR("*** "))('\"')(str)('\"')(' ')(str_t(estr, strlen(estr))).lf();
-	}
-	catch(exception_t const &ex) {
-		out(CSTR("--- "))('\"')(str)('\"')(' ')(ex.msg()).lf();
 	}
 }
 
@@ -80,6 +78,7 @@ static string_t strs_addr[] = {
 	STRING("fe80::217:42ff:fe0e:cc0b"),
 	STRING("193.0.0.193"),
 	STRING("193.0.0"),
+	STRING("::ffff:193.0.0.193"),
 	STRING("::ffff:c100:c1"),
 };
 

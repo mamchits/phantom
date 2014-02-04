@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_static module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -35,6 +35,7 @@ namespace file_types_default {
 config_binding_sname(file_types_default_t);
 config_binding_value(file_types_default_t, mime_types_filename);
 config_binding_value(file_types_default_t, allow_gzip_list);
+config_binding_cast(file_types_default_t, file_types_t);
 config_binding_ctor(file_types_t, file_types_default_t);
 }
 

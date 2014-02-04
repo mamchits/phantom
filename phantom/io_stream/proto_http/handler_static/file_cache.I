@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_static module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -10,9 +10,9 @@
 
 #include <pd/base/list.H>
 #include <pd/base/list2.H>
-#include <pd/base/thr.H>
 #include <pd/base/ref.H>
 #include <pd/base/time.H>
+#include <pd/base/mutex.H>
 
 namespace phantom { namespace io_stream { namespace proto_http { namespace handler_static {
 
@@ -28,7 +28,7 @@ struct file_t : public ref_count_atomic_t {
 
 	inline operator bool() const throw() { return fd >= 0; }
 
-	file_t(string_t const &_sys_name_z, timeval_t curtime = timeval_current()) throw();
+	file_t(string_t const &_sys_name_z, timeval_t curtime = timeval::current()) throw();
 	~file_t() throw();
 
 	friend class ref_t<file_t>;
@@ -98,7 +98,7 @@ class file_cache_t {
 	string_t root;
 	path_translation_t const &translation;
 	interval_t check_time;
-	thr::mutex_t mutex;
+	mutex_t mutex;
 
 	bucket_t *buckets;
 	age_list_t age_list;

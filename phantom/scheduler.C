@@ -1,6 +1,6 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -14,8 +14,8 @@ scheduler_t::config_t::config_t() throw() :
 	policy((policy_t)sched_getscheduler(0)), policy_orig(policy),
 	priority(({ sched_param p; sched_getparam(0, &p); p.sched_priority; })),
 	priority_orig(priority),
-	threads(1), limit(sizeval_unlimited), event_buf_size(20),
-	timeout_prec(10 * interval_millisecond) { }
+	threads(1), limit(sizeval::unlimited), event_buf_size(20),
+	timeout_prec(10 * interval::millisecond) { }
 
 void scheduler_t::config_t::check(in_t::ptr_t const &ptr) const {
 	if(!threads)
@@ -31,6 +31,7 @@ config_binding_value(scheduler_t, threads);
 config_binding_value(scheduler_t, limit);
 config_binding_value(scheduler_t, event_buf_size);
 config_binding_value(scheduler_t, timeout_prec);
+config_binding_value(scheduler_t, tname);
 config_binding_value(scheduler_t, policy);
 config_binding_value(scheduler_t, priority);
 
@@ -43,7 +44,7 @@ config_enum_internal_value(scheduler_t, policy_t, batch);
 }}
 
 scheduler_t::scheduler_t(string_t const &name, config_t const &config) :
-	obj_t(name), threads(config.threads),
+	obj_t(name), tname(config.tname), threads(config.threads),
 	event_buf_size(config.event_buf_size), timeout_prec(config.timeout_prec),
 	policy(config.policy), priority(config.priority),
 	need_set_priority(
@@ -62,16 +63,17 @@ scheduler_t::~scheduler_t() throw() {
 void scheduler_t::init() {
 	sched_param sp = { priority };
 
-	init_ext();
-
 	size_t i = 0;
 	try {
-		for(; i < threads; ++i) {
-			string_t _name = string_t::ctor_t(name.size() + 1 + 3 + 1)
-				(name)('[').print(i)(']')
-			;
+		char const *fmt = log::number_fmt(threads);
 
-			bq_thrs[i].init(_name, event_buf_size, timeout_prec, cont_count, activate());
+		for(; i < threads; ++i) {
+			string_t name = string_t::ctor_t(5).print(i, fmt);
+			log::handler_t handler(name);
+
+			bq_thrs[i].init(
+				event_buf_size, timeout_prec, cont_count, tname, post_activate()
+			);
 
 			if(need_set_priority)
 				if(sched_setscheduler(bq_thrs[i].get_tid(), policy, &sp) < 0)
@@ -88,24 +90,27 @@ void scheduler_t::init() {
 
 		throw;
 	}
+
+	init_ext();
 }
 
-void scheduler_t::exec() { }
+void scheduler_t::exec() const { }
 
-void scheduler_t::stat(out_t &out, bool clear) {
-	out(CSTR("tasks: ")).print(cont_count.value()).lf();
+void scheduler_t::stat_print() const {
+	{
+		stat::ctx_t ctx(CSTR("bqs"), 1);
+		for(size_t i = 0; i < threads; ++i)
+			bq_thrs[i].stat_print();
+	}
 
-	for(size_t i = 0; i < threads; ++i)
-		bq_thrs[i].stat_print(out, clear);
-
-	stat_ext(out, clear);
+	stat_print_ext();
 }
 
 void scheduler_t::fini() {
-	fini_ext();
-
 	for(size_t i = threads; i;)
 		bq_thrs[--i].fini();
+
+	fini_ext();
 }
 
 } // namespace phantom

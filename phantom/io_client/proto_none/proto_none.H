@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_none module.
-// Copyright (C) 2010-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2010-2012, YANDEX LLC.
+// Copyright (C) 2010-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2010-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -26,10 +26,12 @@ class proto_none_t : public proto_t {
 	typedef proto_none::entry_t entry_t;
 	typedef proto_none::instance_t instance_t;
 
-	virtual void init();
-	virtual void run();
-	virtual proto_instance_t *create_instance(string_t const &name);
-	virtual void stat(out_t &out, bool clear);
+	virtual void do_init();
+	virtual void do_run() const;
+	virtual void do_stat_print() const;
+	virtual void do_fini();
+
+	virtual proto_t::instance_t *create_instance(unsigned int rank);
 
 	size_t instances;
 
@@ -47,14 +49,11 @@ public:
 		prms_t(config_t const &config) throw();
 		inline ~prms_t() throw() { }
 	};
+
 	prms_t const prms;
 
 	proto_none_t(string_t const &name, config_t const &config) throw();
 	~proto_none_t() throw();
-
-private: // don't use
-	void *operator new(size_t);
-	void operator delete(void *);
 };
 
 }} // namespace::io_client

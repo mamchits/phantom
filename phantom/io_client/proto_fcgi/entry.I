@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_fcgi module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -9,7 +9,7 @@
 #include "../../pd.H"
 
 #include <pd/http/server.H>
-#include <pd/base/thr.H>
+#include <pd/base/spinlock.H>
 
 namespace phantom { namespace io_client { namespace proto_fcgi {
 
@@ -32,12 +32,14 @@ class entry_t {
 		instance_t *get(size_t ind) const;
 		void place(instance_t *instance, size_t ind, bool flag);
 
-		static bool hcmp(instance_t *instance1, instance_t *instance2);
+		uint32_t rand_val;
+		size_t rand_cnt;
+		bool rand();
 
 	public:
 		inline instances_t(size_t _max_count) :
 			count(0), max_count(_max_count),
-			instances(new instance_t *[_max_count]) { }
+			instances(new instance_t *[_max_count]), rand_val(0), rand_cnt(0) { }
 
 		inline ~instances_t() throw() { delete [] instances; }
 
@@ -50,7 +52,7 @@ class entry_t {
 		inline size_t get_count() const { return count; }
 	};
 
-	thr::spinlock_t instances_spinlock;
+	spinlock_t instances_spinlock;
 	instances_t instances;
 
 	class content_t;
@@ -62,21 +64,23 @@ public:
 	inline ~entry_t() throw() { }
 
 	inline void insert_instance(instance_t *instance) {
-		thr::spinlock_guard_t guard(instances_spinlock);
+		spinlock_guard_t guard(instances_spinlock);
 		instances.insert(instance);
 	}
 
 	inline void remove_instance(instance_t *instance) {
-		thr::spinlock_guard_t guard(instances_spinlock);
+		spinlock_guard_t guard(instances_spinlock);
 		instances.remove(instance);
 	}
+
+	inline void init() { }
 
 	bool proc(
 		request_t const &request, reply_t &reply,
 		interval_t *timeout, string_t const &root
 	);
 
-	void stat(out_t &out, bool clear);
+	inline void stat_print() { }
 };
 
 }}} // namespace phantom::io_client::proto_fcgi

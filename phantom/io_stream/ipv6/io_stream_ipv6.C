@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::ipv6 module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -78,7 +78,7 @@ namespace io_stream_ipv6 {
 config_binding_sname(io_stream_ipv6_t);
 config_binding_value(io_stream_ipv6_t, address);
 config_binding_value(io_stream_ipv6_t, port);
-config_binding_parent(io_stream_ipv6_t, io_stream_t, 1);
+config_binding_parent(io_stream_ipv6_t, io_stream_t);
 config_binding_value(io_stream_ipv6_t, defer_accept);
 config_binding_value(io_stream_ipv6_t, cork);
 config_binding_ctor(io_t, io_stream_ipv6_t);

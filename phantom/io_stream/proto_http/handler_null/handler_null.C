@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_null module.
-// Copyright (C) 2010-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2010-2012, YANDEX LLC.
+// Copyright (C) 2010-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2010-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -42,7 +42,7 @@ public:
 
 namespace handler_null {
 config_binding_sname(handler_null_t);
-config_binding_parent(handler_null_t, handler_t, 1);
+config_binding_parent(handler_null_t, handler_t);
 config_binding_ctor(handler_t, handler_null_t);
 } // namespace handler_null
 

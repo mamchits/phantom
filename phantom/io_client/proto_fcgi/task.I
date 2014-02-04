@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_client::proto_fcgi module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -28,27 +28,27 @@ struct task_t : public ref_count_atomic_t {
 		stdout(), stderr(), app_status(0), proto_code(0) { }
 
 	inline void set_ready(uint32_t _app_status) {
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 		status = ready;
 		app_status = _app_status;
-		cond.send();
+		handler.send();
 	}
 
 	inline void cancel(uint8_t _code) {
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 		status = canceled;
 		proto_code = _code;
-		cond.send();
+		handler.send();
 	}
 
 	inline bool wait(interval_t *timeout) {
-		bq_cond_guard_t guard(cond);
+		bq_cond_t::handler_t handler(cond);
 
 		while(true) {
 			if(status != processed)
 				return status == ready;
 
-			if(cond.wait(timeout) != bq_ok)
+			if(handler.wait(timeout) != bq_ok)
 				return false;
 		}
 	}

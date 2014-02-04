@@ -1,6 +1,6 @@
 #! /bin/sh
 
-export DEB_BUILD_OPTIONS=nostrip
-export MAKEFLAGS=Rj12
+export DEB_BUILD_OPTIONS="nostrip parallel=12"
+export MAKEFLAGS=R
 
-exec dh "${@}"
+exec dh "${@}" --parallel

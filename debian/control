@@ -18,7 +18,7 @@ Package: phantom-dev
 Architecture: i386 amd64
 Section: devel
 Priority: optional
-Depends: libc6-dev, g++, phantom (= ${source:Version})
+Depends: libc6-dev, g++, phantom (= ${source:Version}), ${perl:Depends}
 Description: Phantom development library.
 
 Package: phantom-ssl

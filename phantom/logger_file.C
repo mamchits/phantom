@@ -1,6 +1,6 @@
 // This file is part of the phantom program.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This program may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -11,7 +11,7 @@
 
 namespace phantom {
 
-class logger_file_t : public logger_t, io_logger_file_t {
+class logger_file_t : public logger_t, public io_logger_file_t {
 	log::level_t _level;
 
 	virtual void commit(iovec const *iov, size_t count) const throw();
@@ -42,7 +42,8 @@ public:
 namespace logger_file {
 config_binding_sname(logger_file_t);
 config_binding_value(logger_file_t, level);
-config_binding_parent(logger_file_t, io_logger_file_t, 1);
+config_binding_cast(logger_file_t, logger_t);
+config_binding_parent(logger_file_t, io_logger_file_t);
 config_binding_ctor(logger_t, logger_file_t);
 }
 

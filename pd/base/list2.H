@@ -1,6 +1,6 @@
 // This file is part of the pd::base library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -24,9 +24,8 @@ protected:
 		prev->list2_item_t<x_t>::next = next;
 	}
 
-private: // don't use
-	list2_item_t(list2_item_t const &);
-	list2_item_t &operator=(list2_item_t const &);
+	list2_item_t(list2_item_t const &) = delete;
+	list2_item_t &operator=(list2_item_t const &) = delete;
 };
 
 } // namespace pd

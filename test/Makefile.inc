@@ -7,6 +7,7 @@ others_pd += test/test.mk
 $(eval $(call TEST,base))
 $(eval $(call TEST,bq,base))
 $(eval $(call TEST,http,base))
+$(eval $(call TEST,pi,base))
 
 CXXFLAGS.test/bq/bug_glibc_errno.C = -O3
 CXXFLAGS.test/bq/align.C = -O3

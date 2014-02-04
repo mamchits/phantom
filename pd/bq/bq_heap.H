@@ -1,12 +1,13 @@
 // This file is part of the pd::bq library.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This library may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
 #pragma once
 
 #include <pd/bq/bq_cont.H>
+#include <pd/bq/bq_err.H>
 
 #include <pd/base/time.H>
 #include <pd/base/assert.H>
@@ -25,20 +26,25 @@ public:
 		bq_heap_t *heap;
 		size_t ind;
 
-		virtual void attach() throw() = 0;
-		virtual void detach() throw() = 0;
+		bq_err_t err;
+		bool ready;
+		item_t *next;
+		item_t **me;
 
-		inline item_t(interval_t *_timeout) throw() :
+		inline item_t(interval_t *_timeout, bool _ready) throw() :
 			cont(bq_cont_current), timeout(_timeout),
-			time_from(timeval_current()),
-			time_to(timeout ? (time_from + *timeout) : timeval_never),
-			heap(NULL), ind(0) { }
+			time_from(timeval::current()),
+			time_to(
+				timeout && timeout->is_real()
+					? (time_from + *timeout)
+					: timeval::never
+			),
+			heap(NULL), ind(0), err(bq_ok), ready(_ready), next(NULL), me(NULL) { }
 
-		inline ~item_t() throw() { assert(!ind); assert(!heap); }
+		inline ~item_t() throw() { assert(!ind); assert(!heap); assert(!me); }
 
-	private:
-		item_t(item_t const &);
-		item_t &operator=(item_t const &);
+		item_t(item_t const &) = delete;
+		item_t &operator=(item_t const &) = delete;
 	};
 
 private:
@@ -74,14 +80,13 @@ public:
 
 	~bq_heap_t() throw();
 
-private: // don't use
-	bq_heap_t(bq_heap_t const &);
-	bq_heap_t &operator=(bq_heap_t const &);
+	bq_heap_t(bq_heap_t const &) = delete;
+	bq_heap_t &operator=(bq_heap_t const &) = delete;
 };
 
-class bq_cont_activate_t {
+class bq_post_activate_t {
 public:
-	virtual void operator()(bq_heap_t::item_t *item, bq_err_t err) = 0;
+	virtual void operator()(bq_heap_t::item_t *item) = 0;
 };
 
 } // namespace pd

@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::transport_ssl module.
-// Copyright (C) 2011, 2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2011, 2012, YANDEX LLC.
+// Copyright (C) 2011-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2011-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -37,7 +37,7 @@ public:
 		string_t ciphers;
 		interval_t timeout;
 
-		inline config_t() throw() : auth(), ciphers(), timeout(interval_second) { }
+		inline config_t() throw() : auth(), ciphers(), timeout(interval::second) { }
 		inline ~config_t() throw() { }
 
 		inline void check(in_t::ptr_t const &ptr) const {
@@ -59,6 +59,7 @@ config_binding_type(transport_ssl_t, auth_t);
 config_binding_value(transport_ssl_t, auth);
 config_binding_value(transport_ssl_t, ciphers);
 config_binding_value(transport_ssl_t, timeout);
+config_binding_cast(transport_ssl_t, transport_t);
 config_binding_ctor(transport_t, transport_ssl_t);
 }
 

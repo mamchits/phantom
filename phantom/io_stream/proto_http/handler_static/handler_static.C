@@ -1,6 +1,6 @@
 // This file is part of the phantom::io_stream::proto_http::handler_static module.
-// Copyright (C) 2006-2012, Eugene Mamchits <mamchits@yandex-team.ru>.
-// Copyright (C) 2006-2012, YANDEX LLC.
+// Copyright (C) 2006-2014, Eugene Mamchits <mamchits@yandex-team.ru>.
+// Copyright (C) 2006-2014, YANDEX LLC.
 // This module may be distributed under the terms of the GNU LGPL 2.1.
 // See the file ‘COPYING’ or ‘http://www.gnu.org/licenses/lgpl-2.1.html’.
 
@@ -50,7 +50,7 @@ public:
 		config::enum_t<bool> allow_gzip;
 
 		inline opts_config_t() throw() :
-			expires(interval_inf), allow_gzip(false) { }
+			expires(interval::inf), allow_gzip(false) { }
 
 		inline void check(in_t::ptr_t const &) const { }
 		inline ~opts_config_t() throw() { }
@@ -81,13 +81,13 @@ public:
 		sizeval_t cache_size;
 		interval_t cache_check_time;
 		string_t charset;
-		config::switch_t<path_t, config::struct_t<opts_config_t> > opts;
+		config::switch_t<path_t, config::struct_t<opts_config_t>> opts;
 		config::struct_t<opts_config_t> default_opts;
 
 		inline config_t() throw() :
 			handler_t::config_t(),
-			root(), path_translation(), file_types(), cache_size(8 * sizeval_kilo),
-			cache_check_time(interval_second), charset(STRING("UTF-8")),
+			root(), path_translation(), file_types(), cache_size(8 * sizeval::kilo),
+			cache_check_time(interval::second), charset(STRING("UTF-8")),
 			opts(), default_opts() { }
 
 		inline void check(in_t::ptr_t const &ptr) const {
@@ -106,7 +106,7 @@ public:
 
 	inline handler_static_t(string_t const &name, config_t const &config) :
 		handler_t(name, config), file_types(*config.file_types),
-		path_opts(), default_opts(config.default_opts),
+		path_opts(config.opts), default_opts(config.default_opts),
 		charset(config.charset) {
 
 		path_translation_t const *translation = config.path_translation;
@@ -116,8 +116,6 @@ public:
 		cache = new file_cache_t(
 			config.cache_size, config.root, *translation, config.cache_check_time
 		);
-
-		path_opts.setup(config.opts);
 	}
 
 	inline ~handler_static_t() throw() {
@@ -145,7 +143,7 @@ config_binding_type(handler_static_t, file_types_t);
 config_binding_value(handler_static_t, file_types);
 config_binding_value(handler_static_t, opts);
 config_binding_value(handler_static_t, default_opts);
-config_binding_parent(handler_static_t, handler_t, 1);
+config_binding_parent(handler_static_t, handler_t);
 config_binding_ctor(handler_t, handler_static_t);
 
 } // namespace handler_static
@@ -289,7 +287,7 @@ void handler_static_t::do_proc(request_t const &request, reply_t &reply) const {
 
 	opts_t::item_t const *item = path_opts.lookup(request.path);
 	if(item)
-		opts = &item->data;
+		opts = &item->val;
 
 	bool get = true;
 	switch(request.method) {
